@@ -323,3 +323,5 @@ Risk: Jev's code understanding is unmeasured. Nobody has published measurements 
 - [Opengrep fork (InfoQ)](https://www.infoq.com/news/2025/02/semgrep-forked-opengrep)
 - [code-scanning-rubocop](https://rubygems.org/gems/code-scanning-rubocop)
 - [SARIF from .NET projects (Meziantou)](https://www.meziantou.net/how-to-output-a-sarif-file-from-a-dotnet-project.htm)
+
+<!-- CI smoke test: safe to close -->
