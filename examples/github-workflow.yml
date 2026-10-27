@@ -1,10 +1,6 @@
 # Copy to .github/workflows/code-review.yml in the repo to review.
 #
-# Needs, in that repo (or its organization):
-#   MCR_TOKEN         read access to phassle/multi-code-review (it is private):
-#                     a fine-grained token or GitHub App token with Contents: read.
-#                     Also allow that repo's workflows to be used: Settings → Actions → General
-#                     → Access → "Accessible from repositories in the organization".
+# Optional secrets, in that repo (or its organization):
 #   LLM_API_KEY       optional: LLM reviewers (code goes to the LLM API)
 #   TYPESAFE_API_KEY  optional: Jev as judge
 name: code-review
@@ -22,13 +18,12 @@ permissions:
 
 jobs:
   review:
-    uses: phassle/multi-code-review/.github/workflows/review.yml@develop
+    uses: phassle/multi-code-review/.github/workflows/review.yml@main
     with:
       # Install dependencies so ESLint, tsc, Roslyn … can run; the analyzers have no network.
       prepare: npm ci
       # levels: security=maximum,testing=minimum   # when the repo has no .mcr/settings.yml
       # offline: true                              # no LLM, no Jev: no code leaves the runner
     secrets:
-      mcr_token: ${{ secrets.MCR_TOKEN }}
       llm_api_key: ${{ secrets.LLM_API_KEY }}
       typesafe_api_key: ${{ secrets.TYPESAFE_API_KEY }}

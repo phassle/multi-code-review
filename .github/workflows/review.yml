@@ -38,10 +38,10 @@ on:
       tool-ref:
         description: Branch, tag or commit of multi-code-review to run.
         type: string
-        default: develop
+        default: main
     secrets:
       mcr_token:
-        description: Read access to phassle/multi-code-review (private). Not needed in that repo itself.
+        description: Only for a private copy of multi-code-review. The public phassle/multi-code-review needs none.
         required: false
       llm_api_key:
         required: false
@@ -57,18 +57,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  # A pull request from a fork gets no secrets, so no mcr_token, and its token cannot
-  # read this private repo. Say so instead of failing on the checkout.
-  fork:
-    if: github.event.pull_request.head.repo.fork && github.repository != 'phassle/multi-code-review'
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "::notice::multi-code-review skipped: pull requests from forks get no secrets, so the private tool cannot be checked out."
-          echo "multi-code-review skipped: pull requests from forks get no secrets. Review this branch locally with \`node scripts/mcr.mjs review\`." >> "$GITHUB_STEP_SUMMARY"
-
   review:
-    if: ${{ !(github.event.pull_request.head.repo.fork && github.repository != 'phassle/multi-code-review') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
