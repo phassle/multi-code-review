@@ -1,0 +1,21 @@
+<Project>
+  <!--
+    Imported after the repo's Directory.Build.props (CustomAfterDirectoryBuildProps).
+    The source tree is read-only: everything the build writes goes under $(McrOut),
+    mirrored by project directory. Restore output (project.assets.json, nuget.g.props)
+    is still read from the project's own obj/, which `dotnet restore` on the host made.
+  -->
+  <PropertyGroup>
+    <_McrSourceObj>$(BaseIntermediateOutputPath)</_McrSourceObj>
+    <_McrSourceObj Condition="'$(_McrSourceObj)' == ''">obj/</_McrSourceObj>
+    <MSBuildProjectExtensionsPath Condition="'$(MSBuildProjectExtensionsPath)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(_McrSourceObj)'))</MSBuildProjectExtensionsPath>
+    <BaseIntermediateOutputPath>$(McrOut)$(MSBuildProjectDirectory)/obj/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(McrOut)$(MSBuildProjectDirectory)/bin/</BaseOutputPath>
+    <OutDir>$(McrOut)$(MSBuildProjectDirectory)/bin/$(TargetFramework)/</OutDir>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;$(_McrSourceObj)**</DefaultItemExcludes>
+    <ErrorLog>$(McrOut)$(MSBuildProjectDirectory)/obj/mcr-$(TargetFramework).sarif,version=2.1</ErrorLog>
+    <EnableNETAnalyzers Condition="'$(EnableNETAnalyzers)' == ''">true</EnableNETAnalyzers>
+    <AnalysisLevel Condition="'$(AnalysisLevel)' == ''">latest-recommended</AnalysisLevel>
+    <UseSharedCompilation>false</UseSharedCompilation>
+  </PropertyGroup>
+</Project>

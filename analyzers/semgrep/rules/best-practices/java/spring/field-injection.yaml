@@ -1,0 +1,21 @@
+rules:
+- id: field-injection
+  message: >-
+    Field injection hides dependencies and needs reflection in tests. Use
+    constructor injection (a final field set by the constructor).
+  severity: INFO
+  languages: [java]
+  paths:
+    exclude: ["**/src/test/**", "*Test.java", "*Tests.java", "*IT.java"]
+  metadata:
+    category: best-practices
+    confidence: HIGH
+    references: ["https://docs.spring.io/spring-framework/reference/core/beans/dependencies/factory-collaborators.html"]
+    technology: [spring]
+  pattern-either:
+  - pattern: |
+      @Autowired
+      $T $F;
+  - pattern: |
+      @Inject
+      $T $F;

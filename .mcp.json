@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "multi-code-review": {
+      "type": "http",
+      "url": "http://127.0.0.1:7700/mcp"
+    }
+  }
+}

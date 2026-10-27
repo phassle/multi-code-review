@@ -1,0 +1,460 @@
+# multi-code-review: one Docker Desktop group.
+#
+#   ./setup.sh        detects the stacks, writes .env, starts what they need
+#   MCP: http://127.0.0.1:7700/mcp
+#
+# Every analyzer container reviews exactly one category and is named
+# <category>-<tool>. One image runs as several containers (MCR_CATEGORY).
+# Services without a profile (core) always run; the rest run when their
+# profile is in COMPOSE_PROFILES. gateway/src/catalog.ts lists the same set.
+#
+# MCR_ROOT is mounted read-only at the same path as on the host, so a harness
+# can pass its own absolute paths and git worktrees (whose .git file points at
+# an absolute host path) resolve. Everything to review must live under it.
+
+name: multi-code-review
+
+x-analyzer: &analyzer
+  restart: unless-stopped
+  networks: [analyzers]
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  volumes:
+    - ${MCR_ROOT:-${HOME}/Source}:${MCR_ROOT:-${HOME}/Source}:ro
+
+x-env: &env
+  MCR_ROOT: ${MCR_ROOT:-${HOME}/Source}
+
+x-semgrep: &semgrep
+  <<: *analyzer
+  build: { context: analyzers, dockerfile: semgrep/Dockerfile }
+  image: multi-code-review/semgrep:dev
+
+x-gitleaks: &gitleaks
+  <<: *analyzer
+  build: { context: analyzers, dockerfile: gitleaks/Dockerfile }
+  image: multi-code-review/gitleaks:dev
+
+x-hadolint: &hadolint
+  <<: *analyzer
+  profiles: [infra]
+  build: { context: analyzers, dockerfile: hadolint/Dockerfile }
+  image: multi-code-review/hadolint:dev
+
+x-checkov: &checkov
+  <<: *analyzer
+  profiles: [infra]
+  build: { context: analyzers, dockerfile: checkov/Dockerfile }
+  image: multi-code-review/checkov:dev
+
+x-node: &node
+  <<: *analyzer
+  profiles: [node]
+  build: { context: analyzers, dockerfile: ts/Dockerfile }
+  image: multi-code-review/ts:dev
+
+x-pmd: &pmd
+  <<: *analyzer
+  profiles: [jvm]
+  build: { context: analyzers, dockerfile: pmd/Dockerfile }
+  image: multi-code-review/pmd:dev
+
+x-detekt: &detekt
+  <<: *analyzer
+  profiles: [jvm]
+  build: { context: analyzers, dockerfile: detekt/Dockerfile }
+  image: multi-code-review/detekt:dev
+
+x-php: &php
+  <<: *analyzer
+  profiles: [php]
+  build: { context: analyzers, dockerfile: php/Dockerfile }
+  image: multi-code-review/php:dev
+
+x-cppcheck: &cppcheck
+  <<: *analyzer
+  profiles: [cpp]
+  build: { context: analyzers, dockerfile: cppcheck/Dockerfile }
+  image: multi-code-review/cppcheck:dev
+
+x-python: &python
+  <<: *analyzer
+  profiles: [python]
+  build: { context: analyzers, dockerfile: python/Dockerfile }
+  image: multi-code-review/python:dev
+
+x-ruby: &ruby
+  <<: *analyzer
+  profiles: [ruby]
+  build: { context: analyzers, dockerfile: ruby/Dockerfile }
+  image: multi-code-review/ruby:dev
+
+# C#/VB.NET: Roslyn builds the project offline from the host's restore
+# (obj/project.assets.json) and NuGet cache, mounted read-only at the same path.
+x-dotnet: &dotnet
+  <<: *analyzer
+  profiles: [dotnet]
+  build: { context: analyzers, dockerfile: dotnet/Dockerfile }
+  image: multi-code-review/dotnet:dev
+  tmpfs: ["/tmp:exec,size=2g"]
+  volumes:
+    - ${MCR_ROOT:-${HOME}/Source}:${MCR_ROOT:-${HOME}/Source}:ro
+    - ${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}:${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}:ro
+
+# Go needs module dependencies offline: the host's module cache, read-only.
+x-go: &go
+  <<: *analyzer
+  profiles: [go]
+  build: { context: analyzers, dockerfile: go/Dockerfile }
+  image: multi-code-review/go:dev
+  volumes:
+    - ${MCR_ROOT:-${HOME}/Source}:${MCR_ROOT:-${HOME}/Source}:ro
+    - ${MCR_GOMODCACHE:-${HOME}/go/pkg/mod}:${MCR_GOMODCACHE:-${HOME}/go/pkg/mod}:ro
+
+# The LLM reviewers are the only containers with a route out, and only to
+# reach the LLM API. They read the repo through read-only tools and never get
+# a shell.
+x-llm: &llm
+  <<: *analyzer
+  profiles: [llm]
+  build: { context: analyzers, dockerfile: llm/Dockerfile }
+  image: multi-code-review/llm:dev
+  networks: [llm, llm-egress]
+  secrets: [llm_api_key]
+
+x-llm-env: &llm-env
+  <<: *env
+  MCR_LLM_BASE_URL: ${MCR_LLM_BASE_URL:-https://api.grunden.ai/v1}
+  MCR_LLM_MODEL: ${MCR_LLM_MODEL:-glm-5.3-flash}
+  MCR_LLM_REASONING: ${MCR_LLM_REASONING:-low}
+
+services:
+  review-mcp:
+    container_name: review-mcp
+    build: gateway
+    image: multi-code-review/gateway:dev
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - 127.0.0.1:${MCR_PORT:-7700}:7700
+    networks: [analyzers, llm, edge, reports]
+    environment:
+      <<: *env
+      MCR_PUBLIC_PORT: ${MCR_PORT:-7700}
+      MCR_REPORT_STORE: http://report-store:8080
+      # Empty: the gateway derives the registry from MCR_PROFILES and its catalog.
+      MCR_ANALYZERS: ${MCR_ANALYZERS:-}
+      MCR_PROFILES: ${MCR_PROFILES:-}
+      MCR_JEV: ${MCR_JEV:-on}
+      # Default review level per category for repos without .mcr/settings.yml, e.g. security=maximum,testing=minimum
+      MCR_LEVELS: ${MCR_LEVELS:-}
+    # The gateway asks Jev (TypeSafe) for typed judgments when this secret holds a key.
+    secrets: [typesafe_api_key]
+    volumes:
+      - ${MCR_ROOT:-${HOME}/Source}:${MCR_ROOT:-${HOME}/Source}:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:7700/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+
+  # Keeps the readable review pages (with code) on the `reports` volume for
+  # MCR_REPORT_TTL_DAYS, default 7, then deletes them. Apart from everything
+  # else: only the gateway reaches it, and it sees no source code itself.
+  report-store:
+    container_name: report-store
+    build: report-store
+    image: multi-code-review/report-store:dev
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [reports]
+    environment:
+      MCR_REPORT_TTL_DAYS: ${MCR_REPORT_TTL_DAYS:-7}
+    volumes:
+      - reports:/data
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+
+  # security
+  security-semgrep:
+    <<: *semgrep
+    container_name: security-semgrep
+    environment: { <<: *env, MCR_CATEGORY: security }
+  security-gitleaks:
+    <<: *gitleaks
+    container_name: security-gitleaks
+    environment: { <<: *env, MCR_CATEGORY: security }
+  security-eslint:
+    <<: *node
+    container_name: security-eslint
+    environment: { <<: *env, MCR_CATEGORY: security, MCR_TOOLS: eslint }
+
+  # architecture
+  architecture-eslint:
+    <<: *node
+    container_name: architecture-eslint
+    environment: { <<: *env, MCR_CATEGORY: architecture, MCR_TOOLS: eslint }
+
+  # best-practices
+  best-practices-semgrep:
+    <<: *semgrep
+    container_name: best-practices-semgrep
+    environment: { <<: *env, MCR_CATEGORY: best-practices }
+  best-practices-hadolint:
+    <<: *hadolint
+    container_name: best-practices-hadolint
+    environment: { <<: *env, MCR_CATEGORY: best-practices }
+  best-practices-eslint:
+    <<: *node
+    container_name: best-practices-eslint
+    environment: { <<: *env, MCR_CATEGORY: best-practices, MCR_TOOLS: eslint }
+
+  # testing
+  testing-eslint:
+    <<: *node
+    container_name: testing-eslint
+    environment: { <<: *env, MCR_CATEGORY: testing, MCR_TOOLS: eslint }
+
+  # correctness
+  correctness-semgrep:
+    <<: *semgrep
+    container_name: correctness-semgrep
+    environment: { <<: *env, MCR_CATEGORY: correctness }
+  correctness-tsc:
+    <<: *node
+    container_name: correctness-tsc
+    environment: { <<: *env, MCR_CATEGORY: correctness, MCR_TOOLS: tsc }
+  correctness-eslint:
+    <<: *node
+    container_name: correctness-eslint
+    environment: { <<: *env, MCR_CATEGORY: correctness, MCR_TOOLS: eslint }
+
+  # reliability
+  reliability-semgrep:
+    <<: *semgrep
+    container_name: reliability-semgrep
+    environment: { <<: *env, MCR_CATEGORY: reliability }
+  reliability-eslint:
+    <<: *node
+    container_name: reliability-eslint
+    environment: { <<: *env, MCR_CATEGORY: reliability, MCR_TOOLS: eslint }
+
+  # jvm
+  security-pmd:
+    <<: *pmd
+    container_name: security-pmd
+    environment: { <<: *env, MCR_CATEGORY: security }
+  architecture-pmd:
+    <<: *pmd
+    container_name: architecture-pmd
+    environment: { <<: *env, MCR_CATEGORY: architecture }
+  best-practices-pmd:
+    <<: *pmd
+    container_name: best-practices-pmd
+    environment: { <<: *env, MCR_CATEGORY: best-practices }
+  correctness-pmd:
+    <<: *pmd
+    container_name: correctness-pmd
+    environment: { <<: *env, MCR_CATEGORY: correctness }
+  reliability-pmd:
+    <<: *pmd
+    container_name: reliability-pmd
+    environment: { <<: *env, MCR_CATEGORY: reliability }
+
+  # dotnet
+  security-roslyn:
+    <<: *dotnet
+    container_name: security-roslyn
+    environment: { <<: *env, MCR_CATEGORY: security, MCR_NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}', NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}' }
+  architecture-roslyn:
+    <<: *dotnet
+    container_name: architecture-roslyn
+    environment: { <<: *env, MCR_CATEGORY: architecture, MCR_NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}', NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}' }
+  best-practices-roslyn:
+    <<: *dotnet
+    container_name: best-practices-roslyn
+    environment: { <<: *env, MCR_CATEGORY: best-practices, MCR_NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}', NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}' }
+  correctness-roslyn:
+    <<: *dotnet
+    container_name: correctness-roslyn
+    environment: { <<: *env, MCR_CATEGORY: correctness, MCR_NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}', NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}' }
+  reliability-roslyn:
+    <<: *dotnet
+    container_name: reliability-roslyn
+    environment: { <<: *env, MCR_CATEGORY: reliability, MCR_NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}', NUGET_PACKAGES: '${MCR_NUGET_PACKAGES:-${HOME}/.nuget/packages}' }
+
+  # jvm: Kotlin
+  best-practices-detekt:
+    <<: *detekt
+    container_name: best-practices-detekt
+    environment: { <<: *env, MCR_CATEGORY: best-practices }
+  correctness-detekt:
+    <<: *detekt
+    container_name: correctness-detekt
+    environment: { <<: *env, MCR_CATEGORY: correctness }
+  reliability-detekt:
+    <<: *detekt
+    container_name: reliability-detekt
+    environment: { <<: *env, MCR_CATEGORY: reliability }
+
+  # infra: cloud IaC (Terraform, Bicep/ARM, CloudFormation/SAM, Serverless) for AWS, Azure, GCP
+  security-checkov:
+    <<: *checkov
+    container_name: security-checkov
+    environment: { <<: *env, MCR_CATEGORY: security }
+  reliability-checkov:
+    <<: *checkov
+    container_name: reliability-checkov
+    environment: { <<: *env, MCR_CATEGORY: reliability }
+
+  # php
+  best-practices-phpstan:
+    <<: *php
+    container_name: best-practices-phpstan
+    environment: { <<: *env, MCR_CATEGORY: best-practices }
+  correctness-phpstan:
+    <<: *php
+    container_name: correctness-phpstan
+    environment: { <<: *env, MCR_CATEGORY: correctness }
+
+  # cpp
+  security-cppcheck:
+    <<: *cppcheck
+    container_name: security-cppcheck
+    environment: { <<: *env, MCR_CATEGORY: security }
+  best-practices-cppcheck:
+    <<: *cppcheck
+    container_name: best-practices-cppcheck
+    environment: { <<: *env, MCR_CATEGORY: best-practices }
+  correctness-cppcheck:
+    <<: *cppcheck
+    container_name: correctness-cppcheck
+    environment: { <<: *env, MCR_CATEGORY: correctness }
+  reliability-cppcheck:
+    <<: *cppcheck
+    container_name: reliability-cppcheck
+    environment: { <<: *env, MCR_CATEGORY: reliability }
+
+  # python (ruff's S rules duplicate bandit, so security is bandit's)
+  security-bandit:
+    <<: *python
+    container_name: security-bandit
+    environment: { <<: *env, MCR_CATEGORY: security, MCR_TOOLS: bandit }
+  best-practices-ruff:
+    <<: *python
+    container_name: best-practices-ruff
+    environment: { <<: *env, MCR_CATEGORY: best-practices, MCR_TOOLS: ruff }
+  testing-ruff:
+    <<: *python
+    container_name: testing-ruff
+    environment: { <<: *env, MCR_CATEGORY: testing, MCR_TOOLS: ruff }
+  correctness-ruff:
+    <<: *python
+    container_name: correctness-ruff
+    environment: { <<: *env, MCR_CATEGORY: correctness, MCR_TOOLS: ruff }
+  reliability-ruff:
+    <<: *python
+    container_name: reliability-ruff
+    environment: { <<: *env, MCR_CATEGORY: reliability, MCR_TOOLS: ruff }
+
+  # ruby
+  security-brakeman:
+    <<: *ruby
+    container_name: security-brakeman
+    environment: { <<: *env, MCR_CATEGORY: security, MCR_TOOLS: brakeman }
+  security-rubocop:
+    <<: *ruby
+    container_name: security-rubocop
+    environment: { <<: *env, MCR_CATEGORY: security, MCR_TOOLS: rubocop }
+  best-practices-rubocop:
+    <<: *ruby
+    container_name: best-practices-rubocop
+    environment: { <<: *env, MCR_CATEGORY: best-practices, MCR_TOOLS: rubocop }
+  testing-rubocop:
+    <<: *ruby
+    container_name: testing-rubocop
+    environment: { <<: *env, MCR_CATEGORY: testing, MCR_TOOLS: rubocop }
+  correctness-rubocop:
+    <<: *ruby
+    container_name: correctness-rubocop
+    environment: { <<: *env, MCR_CATEGORY: correctness, MCR_TOOLS: rubocop }
+  reliability-rubocop:
+    <<: *ruby
+    container_name: reliability-rubocop
+    environment: { <<: *env, MCR_CATEGORY: reliability, MCR_TOOLS: rubocop }
+
+  # go
+  security-golangci-lint:
+    <<: *go
+    container_name: security-golangci-lint
+    environment: { <<: *env, MCR_CATEGORY: security, MCR_GOMODCACHE: '${MCR_GOMODCACHE:-${HOME}/go/pkg/mod}' }
+  best-practices-golangci-lint:
+    <<: *go
+    container_name: best-practices-golangci-lint
+    environment: { <<: *env, MCR_CATEGORY: best-practices, MCR_GOMODCACHE: '${MCR_GOMODCACHE:-${HOME}/go/pkg/mod}' }
+  correctness-golangci-lint:
+    <<: *go
+    container_name: correctness-golangci-lint
+    environment: { <<: *env, MCR_CATEGORY: correctness, MCR_GOMODCACHE: '${MCR_GOMODCACHE:-${HOME}/go/pkg/mod}' }
+  reliability-golangci-lint:
+    <<: *go
+    container_name: reliability-golangci-lint
+    environment: { <<: *env, MCR_CATEGORY: reliability, MCR_GOMODCACHE: '${MCR_GOMODCACHE:-${HOME}/go/pkg/mod}' }
+
+  # llm: one reviewer per category, any language
+  security-llm:
+    <<: *llm
+    container_name: security-llm
+    environment: { <<: *llm-env, MCR_CATEGORY: security }
+  architecture-llm:
+    <<: *llm
+    container_name: architecture-llm
+    environment: { <<: *llm-env, MCR_CATEGORY: architecture }
+  best-practices-llm:
+    <<: *llm
+    container_name: best-practices-llm
+    environment: { <<: *llm-env, MCR_CATEGORY: best-practices }
+  testing-llm:
+    <<: *llm
+    container_name: testing-llm
+    environment: { <<: *llm-env, MCR_CATEGORY: testing }
+  correctness-llm:
+    <<: *llm
+    container_name: correctness-llm
+    environment: { <<: *llm-env, MCR_CATEGORY: correctness }
+  reliability-llm:
+    <<: *llm
+    container_name: reliability-llm
+    environment: { <<: *llm-env, MCR_CATEGORY: reliability }
+
+secrets:
+  llm_api_key:
+    file: ./secrets/llm_api_key
+  typesafe_api_key:
+    file: ./secrets/typesafe_api_key
+
+networks:
+  # No route out: analyzers run repo code (ESLint configs) and must not leak it.
+  analyzers:
+    internal: true
+  # Gateway to LLM reviewers; LLM reviewers to the API through llm-egress.
+  llm:
+    internal: true
+  llm-egress: {}
+  edge: {}
+  # Gateway to report-store, nothing else.
+  reports:
+    internal: true
+
+volumes:
+  # Review pages with code excerpts; report-store deletes them after their TTL.
+  reports: {}

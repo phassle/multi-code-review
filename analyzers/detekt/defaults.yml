@@ -1,0 +1,12 @@
+# Applied on top of detekt's default config when the repo has no detekt config
+# of its own. Turns on rules that are off by default but matter for review.
+coroutines:
+  GlobalCoroutineUsage:
+    active: true
+  SuspendFunWithCoroutineScopeReceiver:
+    active: true
+potential-bugs:
+  DontDowncastCollectionTypes:
+    active: true
+  ExitOutsideMain:
+    active: true

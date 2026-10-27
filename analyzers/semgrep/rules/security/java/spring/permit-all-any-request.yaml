@@ -1,0 +1,21 @@
+rules:
+- id: permit-all-any-request
+  message: >-
+    Every request is let through without authentication. Permit only the public
+    paths and end with anyRequest().authenticated() (or denyAll()).
+  severity: WARNING
+  languages: [java]
+  metadata:
+    category: security
+    subcategory: [audit]
+    likelihood: MEDIUM
+    impact: HIGH
+    cwe: ["CWE-306: Missing Authentication for Critical Function"]
+    owasp: ["A01:2021 - Broken Access Control"]
+    confidence: MEDIUM
+    references: ["https://docs.spring.io/spring-security/reference/servlet/authorization/authorize-http-requests.html"]
+    technology: [spring]
+  pattern-either:
+  - pattern: $X.anyRequest().permitAll()
+  - pattern: $X.requestMatchers("/**").permitAll()
+  - pattern: $X.antMatchers("/**").permitAll()

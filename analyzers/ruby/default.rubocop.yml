@@ -1,0 +1,20 @@
+# Used when the reviewed repo has no .rubocop.yml, or its config cannot load
+# here (plugins this image lacks, remote inherit_from, ...). The file name must
+# not start with ".rubocop": RuboCop then resolves the paths below against the
+# working directory (the reviewed repo), not this file's directory.
+plugins:
+  - rubocop-rails
+  - rubocop-rspec
+  - rubocop-performance
+
+inherit_mode:
+  merge:
+    - Exclude
+
+AllCops:
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - 'bin/**/*'
+    - 'db/schema.rb'
+    - 'db/*_schema.rb'

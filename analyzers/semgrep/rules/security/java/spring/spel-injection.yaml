@@ -1,0 +1,40 @@
+rules:
+- id: spel-injection
+  message: >-
+    Request data reaches a Spring Expression Language parser. An attacker can run
+    arbitrary code through T(java.lang.Runtime) and the like. Never evaluate
+    expressions built from user input; map the input to a fixed set of operations.
+  severity: ERROR
+  languages: [java]
+  metadata:
+    category: security
+    subcategory: [vuln]
+    likelihood: HIGH
+    impact: HIGH
+    cwe: ["CWE-917: Expression Language Injection"]
+    owasp: ["A03:2021 - Injection"]
+    confidence: HIGH
+    references: ["https://find-sec-bugs.github.io/bugs.htm#SPEL_INJECTION"]
+    technology: [spring]
+  mode: taint
+  pattern-sources:
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          $METHOD(..., @$REQ(...) $TYPE $SOURCE, ...) { ... }
+      - pattern-inside: |
+          $METHOD(..., @$REQ $TYPE $SOURCE, ...) { ... }
+    - metavariable-regex:
+        metavariable: $REQ
+        regex: ^(RequestBody|PathVariable|RequestParam|RequestHeader|CookieValue|ModelAttribute)$
+    - focus-metavariable: $SOURCE
+  pattern-sinks:
+  - patterns:
+    - pattern-either:
+      - pattern: (ExpressionParser $P).parseExpression($X, ...)
+      - pattern: (SpelExpressionParser $P).parseExpression($X, ...)
+      - pattern: new SpelExpressionParser(...).parseExpression($X, ...)
+      - pattern: (ExpressionParser $P).parseRaw($X)
+      - pattern: (SpelExpressionParser $P).parseRaw($X)
+      - pattern: new SpelExpressionParser(...).parseRaw($X)
+    - focus-metavariable: $X

@@ -1,0 +1,187 @@
+# multi-code-review decisions. Reviewed like code; matched on every review.
+# action: fix (keep on the to-fix list) | accept (norm broken on purpose: inform, never block)
+#         false-positive (the tool is wrong here) | disable (this rule does not apply: hide it)
+# match:  rule (analyzer:ruleId), plus fingerprint (one occurrence) or paths (globs).
+version: 1
+decisions:
+  - id: D-0001
+    action: false-positive
+    match:
+      rule: semgrep:typescript.mcp.security.mcp-ssrf-typescript
+      paths:
+        - gateway/src/server.ts
+    reason: The rule's `$AXIOS($URL, ...)` sink matches every function call whose first argument derives from a tool argument, so every handler line is flagged. In server.ts tool arguments only reach resolveRepo, git and file reads; the gateway's only fetch calls (analyzers.ts, jev.ts) take their URLs from MCR_ANALYZERS / the catalog and MCR_JEV_URL, never from a request.
+    ref: https://github.com/phassle/multi-code-review/pull/5
+    decided_on: 2026-10-13
+  - id: D-0002
+    action: false-positive
+    match:
+      rule: semgrep:javascript.jquery.security.audit.prohibit-jquery-html
+      fingerprint: 34491b02f6da7fbe509e84c0fc9c533b58c4cbc60f719b1a5c2dba299c933f91
+      paths:
+        - gateway/tests/html.test.ts
+    reason: "`html` here is the gateway's own escaping template tag (gateway/src/html.ts), not jQuery's .html()."
+    ref: https://github.com/phassle/multi-code-review/pull/5
+    decided_on: 2026-10-13
+  - id: D-0003
+    action: false-positive
+    match:
+      rule: semgrep:javascript.lang.security.html-in-template-string
+      paths:
+        - scripts/github-review.mjs
+    reason: Builds GitHub-flavoured Markdown for the reviews API; GitHub sanitizes it, nothing is rendered as raw HTML in a browser
+    ref: https://github.com/phassle/multi-code-review/pull/8
+    decided_on: 2026-10-14
+  - id: D-0004
+    action: disable
+    match:
+      rule: gitleaks:generic-api-key
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0005
+    action: disable
+    match:
+      rule: pmd:NoPackage
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0006
+    action: disable
+    match:
+      rule: pmd:UncommentedEmptyMethodBody
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0007
+    action: disable
+    match:
+      rule: pmd:UnusedPrivateField
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0008
+    action: disable
+    match:
+      rule: pmd:UnusedPrivateMethod
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0009
+    action: disable
+    match:
+      rule: semgrep:java.spring.security.audit.spel-injection
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0010
+    action: disable
+    match:
+      rule: semgrep:java.spring.security.audit.spring-csrf-disabled
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0011
+    action: disable
+    match:
+      rule: semgrep:mcr.java.spring.cors-any-origin
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0012
+    action: disable
+    match:
+      rule: semgrep:mcr.java.spring.csrf-disabled
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0013
+    action: disable
+    match:
+      rule: semgrep:mcr.java.spring.permit-all-any-request
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0014
+    action: disable
+    match:
+      rule: semgrep:mcr.java.spring.proxy-annotation-on-private
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0015
+    action: disable
+    match:
+      rule: semgrep:mcr.java.spring.spel-injection
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0016
+    action: disable
+    match:
+      rule: semgrep:mcr.java.spring.weak-password-encoder
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0017
+    action: disable
+    match:
+      rule: semgrep:mcr.java.spring.config-plaintext-secret
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0018
+    action: disable
+    match:
+      rule: semgrep:mcr.java.spring.config-stacktrace-exposed
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0019
+    action: disable
+    match:
+      rule: semgrep:mcr.java.spring.field-injection
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14
+  - id: D-0020
+    action: disable
+    match:
+      rule: semgrep:java.spring.security.audit.spring-actuator-fully-enabled
+      paths:
+        - analyzers/semgrep/rules/**
+    reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
+    ref: https://github.com/phassle/multi-code-review/pull/10
+    decided_on: 2026-10-14

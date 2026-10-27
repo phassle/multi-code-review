@@ -1,0 +1,29 @@
+rules:
+- id: cors-any-origin
+  message: >-
+    CORS lets any origin call this endpoint. List the origins that may call it;
+    with credentials, a wildcard lets any site act as the logged-in user.
+  severity: WARNING
+  languages: [java]
+  metadata:
+    category: security
+    subcategory: [audit]
+    likelihood: MEDIUM
+    impact: MEDIUM
+    cwe: ["CWE-942: Permissive Cross-domain Policy with Untrusted Domains"]
+    owasp: ["A05:2021 - Security Misconfiguration"]
+    confidence: MEDIUM
+    references: ["https://docs.spring.io/spring-framework/reference/web/webmvc-cors.html"]
+    technology: [spring]
+  pattern-either:
+  - pattern: '@CrossOrigin("*")'
+  - pattern: '@CrossOrigin(origins = "*", ...)'
+  - pattern: '@CrossOrigin(value = "*", ...)'
+  - pattern: '@CrossOrigin(originPatterns = "*", ...)'
+  - pattern: $R.allowedOrigins("*")
+  - pattern: $R.allowedOriginPatterns("*")
+  - pattern: $C.addAllowedOrigin("*")
+  - pattern: $C.addAllowedOriginPattern("*")
+  - pattern: $C.setAllowedOrigins(List.of("*"))
+  - pattern: $C.setAllowedOrigins(Arrays.asList("*"))
+  - pattern: $C.setAllowedOrigins(Collections.singletonList("*"))

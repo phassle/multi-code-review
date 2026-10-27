@@ -1,0 +1,24 @@
+rules:
+- id: csrf-disabled
+  message: >-
+    CSRF protection is turned off. That is only safe for a stateless API that
+    authenticates every request with a header token (no session cookie, no basic
+    auth from a browser). Otherwise keep it on, or limit it with ignoringRequestMatchers.
+  severity: WARNING
+  languages: [java]
+  metadata:
+    category: security
+    subcategory: [audit]
+    likelihood: MEDIUM
+    impact: MEDIUM
+    cwe: ["CWE-352: Cross-Site Request Forgery (CSRF)"]
+    owasp: ["A01:2021 - Broken Access Control"]
+    confidence: MEDIUM
+    references: ["https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html"]
+    technology: [spring]
+  pattern-either:
+  - pattern: $H.csrf(($C) -> $C.disable())
+  - pattern: $H.csrf($C -> $C.disable())
+  - pattern: $H.csrf(AbstractHttpConfigurer::disable)
+  - pattern: $H.csrf(CsrfConfigurer::disable)
+  - pattern: $H.csrf().disable()

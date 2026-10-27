@@ -1,0 +1,233 @@
+# Reusable workflow: review a pull request with multi-code-review and post
+# a pull request review: a summary plus a comment on the line of each new
+# finding (P1 blocks, P2 warns, P3 informs). Fails the check when a finding blocks. Call it from the reviewed repo; see examples/github-workflow.yml.
+#
+# The stack runs on the runner: the analyzers see the checkout read-only and
+# have no network. Only with llm_api_key / typesafe_api_key does code reach a
+# model API, exactly as on a laptop.
+
+name: multi-code-review
+
+on:
+  workflow_call:
+    inputs:
+      base:
+        description: Branch or commit to diff against. Default origin/<PR base branch>.
+        type: string
+        default: ''
+      prepare:
+        description: Shell run in the checkout before the review, e.g. "npm ci" so ESLint and tsc can run. The analyzers themselves have no network.
+        type: string
+        default: ''
+      levels:
+        description: MCR_LEVELS for repos without .mcr/settings.yml, e.g. "security=maximum,testing=minimum".
+        type: string
+        default: ''
+      offline:
+        description: No LLM reviewers and no Jev, even when their keys are passed.
+        type: boolean
+        default: false
+      strict:
+        description: Also fail when an analyzer crashes, not only on blocking findings.
+        type: boolean
+        default: false
+      comment:
+        description: Post the result as a pull request review, with a comment on the line of each new finding.
+        type: boolean
+        default: true
+      tool-ref:
+        description: Branch, tag or commit of multi-code-review to run.
+        type: string
+        default: develop
+    secrets:
+      mcr_token:
+        description: Read access to phassle/multi-code-review (private). Not needed in that repo itself.
+        required: false
+      llm_api_key:
+        required: false
+      typesafe_api_key:
+        required: false
+    outputs:
+      blocking:
+        description: Number of blocking findings.
+        value: ${{ jobs.review.outputs.blocking }}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # A pull request from a fork gets no secrets, so no mcr_token, and its token cannot
+  # read this private repo. Say so instead of failing on the checkout.
+  fork:
+    if: github.event.pull_request.head.repo.fork && github.repository != 'phassle/multi-code-review'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::notice::multi-code-review skipped: pull requests from forks get no secrets, so the private tool cannot be checked out."
+          echo "multi-code-review skipped: pull requests from forks get no secrets. Review this branch locally with \`node scripts/mcr.mjs review\`." >> "$GITHUB_STEP_SUMMARY"
+
+  review:
+    if: ${{ !(github.event.pull_request.head.repo.fork && github.repository != 'phassle/multi-code-review') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      blocking: ${{ steps.review.outputs.blocking }}
+    env:
+      MCR_ROOT: ${{ github.workspace }}
+      MCR_LEVELS: ${{ inputs.levels }}
+    steps:
+      - name: Check out the change
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The PR head, not GitHub's merge commit: line comments must match its lines.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out multi-code-review
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: phassle/multi-code-review
+          ref: ${{ inputs.tool-ref }}
+          token: ${{ secrets.mcr_token || github.token }}
+          path: .mcr-tool
+          persist-credentials: false
+
+      # Outside MCR_ROOT, so the tool is neither scanned nor reviewed.
+      - name: Move the tool out of the workspace
+        run: |
+          mv .mcr-tool "$RUNNER_TEMP/multi-code-review"
+          echo "TOOL=$RUNNER_TEMP/multi-code-review" >> "$GITHUB_ENV"
+
+      - name: Prepare the checkout
+        if: inputs.prepare != ''
+        env:
+          PREPARE: ${{ inputs.prepare }}
+        run: bash -euo pipefail -c "$PREPARE"
+
+      - name: Detect stacks
+        working-directory: ${{ env.TOOL }}
+        env:
+          OFFLINE: ${{ inputs.offline && '--offline' || '' }}
+          LLM_API_KEY: ${{ secrets.llm_api_key }}
+          TYPESAFE_API_KEY: ${{ secrets.typesafe_api_key }}
+        run: |
+          mkdir -p secrets
+          printf '%s' "$LLM_API_KEY" > secrets/llm_api_key
+          printf '%s' "$TYPESAFE_API_KEY" > secrets/typesafe_api_key
+          # The containers run as uid 1000, the runner as 1001; the VM is single-use.
+          chmod 644 secrets/*
+          ./setup.sh --dry-run ${OFFLINE:+"$OFFLINE"} "$MCR_ROOT"
+
+      - name: Start the analyzers
+        working-directory: ${{ env.TOOL }}
+        run: |
+          docker compose up -d --build --quiet-pull
+          for _ in $(seq 1 120); do
+            curl -fsS http://127.0.0.1:7700/healthz > /dev/null 2>&1 && break
+            sleep 1
+          done
+          # Analyzers start on their own time (semgrep loads for seconds on a cold runner): wait until all answer.
+          for _ in $(seq 1 90); do
+            down=$(node scripts/mcr.mjs analyzers 2>/dev/null | jq -r '.[] | select(.error) | .name' || echo review-mcp)
+            [ -z "$down" ] && { echo "All analyzers answer."; exit 0; }
+            sleep 2
+          done
+          echo "::warning::Not answering after 3 minutes: $(echo "$down" | tr '\n' ' ')"
+          for name in $down; do docker compose logs --tail 50 "$name"; done
+
+      - name: Collect the pull request's diff and earlier comments
+        if: github.event.pull_request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # The lines a review comment may sit on, and findings already commented on an earlier push.
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[]' | jq -s . > "$RUNNER_TEMP/pr-files.json"
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/comments" --paginate --jq '.[].body' \
+            | grep -o '<!-- mcr:[0-9a-f]* -->' | sed 's/<!-- mcr:\(.*\) -->/\1/' | jq -R . | jq -s . > "$RUNNER_TEMP/skip.json" || echo '[]' > "$RUNNER_TEMP/skip.json"
+
+      - name: Review
+        id: review
+        env:
+          BASE: ${{ inputs.base || (github.base_ref && format('origin/{0}', github.base_ref)) || '' }}
+          STRICT: ${{ inputs.strict && '--strict' || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          pr=()
+          if [ -f "$RUNNER_TEMP/pr-files.json" ]; then
+            pr=(--github-review "$RUNNER_TEMP/github-review.json" --commit "$HEAD_SHA" --pr-files "$RUNNER_TEMP/pr-files.json" --skip "$RUNNER_TEMP/skip.json" --report-url "$RUN_URL")
+          fi
+          set +e
+          node "$TOOL/scripts/mcr.mjs" review "$MCR_ROOT" ${BASE:+--base "$BASE"} ${STRICT:+"$STRICT"} --json --out "$RUNNER_TEMP/review.md" "${pr[@]}" > "$RUNNER_TEMP/review.json"
+          code=$?
+          set -e
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = 2 ]; then exit 2; fi
+          id=$(jq -r .id "$RUNNER_TEMP/review.json")
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "blocking=$(jq -r .blocking "$RUNNER_TEMP/review.json")" >> "$GITHUB_OUTPUT"
+          # The readable HTML page lives in the gateway's memory; keep a copy.
+          mkdir -p "$RUNNER_TEMP/report"
+          curl -fsS "http://127.0.0.1:7700/reports/$id" > "$RUNNER_TEMP/report/$id.html"
+          cp "$RUNNER_TEMP/review.md" "$RUNNER_TEMP/review.json" "$RUNNER_TEMP/report/"
+          # The full report, code included, is this run's summary: the PR comment links here.
+          # The gateway's own link points at the runner, so drop it. GitHub takes up to 1 MiB.
+          # Through a file, not a pipe: head closing early would SIGPIPE grep and fail the step (pipefail).
+          grep -v '^📄 \*\*Full report:\*\*' "$RUNNER_TEMP/review.md" > "$RUNNER_TEMP/summary.md" || true
+          head -c 1000000 "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report
+        if: steps.review.outputs.id != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: code-review-${{ steps.review.outputs.id }}
+          path: ${{ runner.temp }}/report
+          retention-days: 30
+
+      # The HTML page on its own, unzipped: one click from the PR comment.
+      - name: Upload the HTML report
+        id: html
+        if: steps.review.outputs.id != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ${{ runner.temp }}/report/${{ steps.review.outputs.id }}.html
+          archive: false
+          retention-days: 30
+
+      # One review per push: a summary and a comment on the line of each new finding.
+      # Forks get a read-only token: the job summary still has the report.
+      - name: Post the review
+        if: inputs.comment && github.event.pull_request && steps.review.outputs.id != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HTML_URL: ${{ steps.html.outputs.artifact-url }}
+        run: |
+          payload="$RUNNER_TEMP/github-review.json"
+          # The HTML report's link is known only now, after its upload.
+          jq --arg u "$HTML_URL" '.body |= sub("<!-- mcr:html-link -->"; if $u == "" then "" else " · [HTML](\($u))" end)' "$payload" > "$payload.tmp" && mv "$payload.tmp" "$payload"
+          if ! gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --input "$payload" > /dev/null; then
+            # A line GitHub will not take (e.g. the PR moved on): post the summary with the comments listed in it,
+            # without commit_id, which may no longer be in the PR after a force-push.
+            jq '{event, body: (.body + "\n\n**Line comments that could not be placed**\n\n" + ([.comments[] | "- `\(.path):\(.line)`\n\n" + .body] | join("\n\n")))}' "$payload" > "$payload.flat"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --input "$payload.flat" > /dev/null
+          fi
+
+      - name: Gateway logs
+        if: failure()
+        working-directory: ${{ env.TOOL }}
+        run: docker compose logs --tail 200
+
+      - name: Verdict
+        if: steps.review.outputs.exit != ''
+        env:
+          CODE: ${{ steps.review.outputs.exit }}
+          BLOCKING: ${{ steps.review.outputs.blocking }}
+        run: |
+          if [ "$CODE" = 0 ]; then echo "✅ passed"; exit 0; fi
+          echo "::error::multi-code-review: ${BLOCKING:-?} blocking finding(s); see the PR review or job summary"
+          exit 1

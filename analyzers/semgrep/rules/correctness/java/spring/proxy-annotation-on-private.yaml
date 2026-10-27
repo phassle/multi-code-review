@@ -1,0 +1,20 @@
+rules:
+- id: proxy-annotation-on-private
+  message: >-
+    Spring applies @$A through a proxy, which never sees private methods: this
+    annotation does nothing. Make the method public and call it through the bean
+    (not via this.).
+  severity: WARNING
+  languages: [java]
+  metadata:
+    category: correctness
+    confidence: HIGH
+    references: ["https://docs.spring.io/spring-framework/reference/data-access/transaction/declarative/annotations.html"]
+    technology: [spring]
+  patterns:
+  - pattern: |
+      @$A(...)
+      private $R $M(...) { ... }
+  - metavariable-regex:
+      metavariable: $A
+      regex: ^(Transactional|Async|Cacheable|CachePut|CacheEvict|Retryable|PreAuthorize|PostAuthorize|Secured)$

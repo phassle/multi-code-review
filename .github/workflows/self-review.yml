@@ -1,0 +1,23 @@
+# multi-code-review reviews its own pull requests, with the code of the PR.
+name: code-review
+
+on:
+  pull_request:
+
+concurrency:
+  group: code-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    uses: ./.github/workflows/review.yml
+    with:
+      tool-ref: ${{ github.event.pull_request.head.sha }}
+      prepare: cd gateway && npm ci
+    secrets:
+      llm_api_key: ${{ secrets.LLM_API_KEY }}
+      typesafe_api_key: ${{ secrets.TYPESAFE_API_KEY }}

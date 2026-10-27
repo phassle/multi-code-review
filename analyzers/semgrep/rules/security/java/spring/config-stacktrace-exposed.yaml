@@ -1,0 +1,21 @@
+rules:
+- id: config-stacktrace-exposed
+  message: >-
+    Error responses include the stack trace, which tells an attacker about the
+    code, libraries and versions. Use never (the default) outside local profiles.
+  severity: WARNING
+  languages: [generic]
+  paths:
+    include: ["application*.properties", "application*.yml", "application*.yaml", "bootstrap*.properties", "bootstrap*.yml", "bootstrap*.yaml"]
+    exclude: ["*-local.*", "*-dev.*", "*-test.*", "**/src/test/**"]
+  metadata:
+    category: security
+    subcategory: [vuln]
+    likelihood: HIGH
+    impact: LOW
+    cwe: ["CWE-209: Generation of Error Message Containing Sensitive Information"]
+    owasp: ["A05:2021 - Security Misconfiguration"]
+    confidence: HIGH
+    references: ["https://docs.spring.io/spring-boot/appendix/application-properties/index.html#application-properties.server.server.error.include-stacktrace"]
+    technology: [spring]
+  pattern-regex: (?i)include-stacktrace\s*[=:]\s*["']?always
