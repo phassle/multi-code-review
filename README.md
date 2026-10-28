@@ -5,6 +5,24 @@ It checks a change for six things: **security, architecture, best-practices,
 testing, correctness and reliability**. It also remembers what your team has
 decided about its findings.
 
+> **About this repository.** This is a proof of concept, published to
+> illustrate an idea: pull request review can be built mainly from fast,
+> deterministic analyzers, with a language model added where judgment is
+> needed (for example checking a change against the team's ADRs), and Jev
+> deciding whether each finding is real. It is not a product, not supported,
+> and comes without a license, so all rights are reserved. You are welcome
+> to read it and learn from it.
+>
+> **Third-party rules.** This repository contains no Semgrep-maintained rules.
+> The semgrep image fetches them from
+> [semgrep/semgrep-rules](https://github.com/semgrep/semgrep-rules) at build
+> time. They are licensed under the
+> [Semgrep Rules License v1.0](https://semgrep.dev/legal/rules-license), which
+> allows internal business use only. Build the image locally, and do not push
+> it to a registry, share it, or run it as a service for others. Each analyzer
+> image (semgrep engine, PMD, Ruff, gitleaks, checkov and others) keeps its
+> own license.
+
 ---
 
 ## The short version (ELI5)
@@ -255,8 +273,9 @@ report**, the run's job summary with every finding and its code (opens in the
 browser), and **HTML**, the readable page as a single file. HTML and JSON are
 also attached to the run as one zip.
 
-To use it in a repo, copy [`examples/github-workflow.yml`](examples/github-workflow.yml)
-to `.github/workflows/code-review.yml` and add the secrets it names. `prepare`
+This is how a calling repo is wired: see
+[`examples/github-workflow.yml`](examples/github-workflow.yml), placed as
+`.github/workflows/code-review.yml` with the secrets it names. `prepare`
 installs dependencies first (e.g. `npm ci`), since the analyzers have no network.
 This repo reviews its own pull requests with `.github/workflows/self-review.yml`.
 
