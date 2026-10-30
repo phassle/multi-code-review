@@ -1,9 +1,17 @@
 ---
 name: multi-code-review
 description: Review code changes with the multi-code-review MCP server across security, architecture, best-practices, testing, correctness and reliability, triage the findings with the user, and record what the team decided so later reviews follow it. Use before opening or updating a pull request, when asked to review a branch, worktree or PR, to triage review findings, or to get a list of what to fix.
+metadata:
+  version: 0.1.0
 ---
 
 # multi-code-review
+
+Requires the multi-code-review server running locally (MCP at
+`http://127.0.0.1:7700/mcp`). Get it from
+[phassle/multi-code-review](https://github.com/phassle/multi-code-review),
+run `./setup.sh` (or `aspire start`), then
+`claude mcp add --transport http multi-code-review http://127.0.0.1:7700/mcp`.
 
 The `multi-code-review` MCP server runs one container per category
 (`security-semgrep`, `architecture-eslint`, `correctness-tsc`, ...) and returns
@@ -79,6 +87,25 @@ needs a human decision (triage). Group findings by category in this order:
 security, correctness, reliability, architecture, testing, best-practices.
 Blocking findings come first in each. End with one line: the blocking count,
 or "passed".
+
+## Set up CI (GitHub Actions)
+
+Use this when the user wants every pull request reviewed automatically. CI runs
+the whole stack on the runner; no local server is needed for it.
+
+1. Copy `references/github-workflow.yml` to `.github/workflows/code-review.yml`
+   in the user's repo. Set `prepare` to the repo's install command (`npm ci`,
+   `dotnet restore`, ...) so ESLint, tsc, Roslyn can run; empty if none.
+2. If the repo has no `.mcr/settings.yml`, offer `references/settings.yml` and
+   ask the user for each category's level. Do not choose for them.
+3. Secrets are optional. Ask before adding any: `LLM_API_KEY` (LLM reviewers;
+   code goes to that API) and `TYPESAFE_API_KEY` (Jev as judge). Without them,
+   or with `offline: true`, no code leaves the runner.
+4. Tell the user what the check does: one PR review per push, a line comment
+   per new finding, and a failing check when a finding blocks. The full report
+   is the job summary and an HTML artifact.
+
+Do not commit or push unless asked.
 
 ## When the server is unavailable
 
