@@ -14,6 +14,7 @@ import { applyDecisions, DECISIONS_FILE, parseDecisions, type Decision } from '.
 import { CATEGORIES, classify, dedupe, fromSarif, neverBlocks, sortFindings, toolOf, uniqueIds, type Category, type Finding } from './findings.ts';
 import { changes, cloudTemplates, commitMessages, everything, resolveRepo, type Change } from './git.ts';
 import { intentOf, type Intent } from './intent.ts';
+import { takeTurns } from './queue.ts';
 
 export type Scope = 'diff' | 'all';
 
@@ -198,8 +199,10 @@ export async function runReview(registry: Analyzer[], mcrRoot: string, opts: Rev
   const levels = settings.levels;
   notes.push(...settings.notes);
 
+  // Containers of one tool take turns (memory); model reviewers are light and slow, so they run at once.
+  const turns = takeTurns();
   const results = await Promise.all(
-    selected.map(async (a): Promise<{ run: AnalyzerRun; findings: Finding[] }> => {
+    selected.map((a) => turns(MODEL_TOOLS.has(toolOf(a.name)) ? undefined : toolOf(a.name), async (): Promise<{ run: AnalyzerRun; findings: Finding[] }> => {
       const started = Date.now();
       const named = CATEGORIES.find((c) => a.name.startsWith(`${c}-`));
       const model = MODEL_TOOLS.has(toolOf(a.name));
@@ -230,7 +233,7 @@ export async function runReview(registry: Analyzer[], mcrRoot: string, opts: Rev
       } catch (e) {
         return { run: { name: a.name, category, files: files.length, findings: 0, durationMs: Date.now() - started, error: (e as Error).message }, findings: [] };
       }
-    }),
+    })),
   );
 
   const loaded = loadDecisions(repoRoot);

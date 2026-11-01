@@ -372,10 +372,19 @@ for the assistant in the loop.
 
 ### Local
 
-[Get started](#get-started) as it is. The stack uses about 2 GB of memory idle
-(67 containers with every profile), more while it reviews; images take about
-30 GB of disk. `./setup.sh` starts only the profiles your code needs, so most
-laptops run far fewer.
+[Get started](#get-started) as it is. With every profile (67 containers) the
+stack uses about 3 GB of memory idle and peaked at about 5 GB reviewing this
+whole repo; images take about 30 GB of disk. `./setup.sh` starts only the
+profiles your code needs, so most laptops run far fewer.
+
+It is built to stay small. Containers of one tool (the four semgrep, five PMD,
+five Roslyn, six ESLint containers) take turns instead of doing the same heavy
+work at once, which cut that peak from 8 GB to 5 GB for 8 seconds more on a
+whole-repo review; the LLM reviewers, light but slow, still run side by side.
+Every container has a memory ceiling (`mem_limit` in `compose.yaml`: 512 MB by
+default, up to 4 GB for Roslyn's build). A ceiling reserves nothing: a tool
+that hits it fails that one analysis with an error, and the machine keeps its
+memory.
 
 ### Shared dev box or review server
 
@@ -436,9 +445,9 @@ whoever reaches the port, and review pages contain code.
 `record_decisions` keeps working remotely: it returns the file and the
 assistant writes it in its own checkout.
 
-**Size** for concurrent reviews, not developers: every review fans out to all
-matching analyzers at once, and the heavy ones are Roslyn (`dotnet build`),
-the JVM tools (PMD, detekt) and semgrep. A team of about ten: 8 vCPU, 32 GB
+**Size** for concurrent reviews, not developers: one review peaks around
+5 GB with every profile, and the heavy tools are Roslyn (`dotnet build`), the
+JVM tools (PMD, detekt) and semgrep. A team of about ten: 8 vCPU, 32 GB
 memory, 128 GB SSD. With only a couple of profiles, half that is enough.
 
 **Keep it fresh:** rebuild weekly

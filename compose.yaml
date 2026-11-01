@@ -19,6 +19,9 @@ name: multi-code-review
 
 x-analyzer: &analyzer
   restart: unless-stopped
+  # A ceiling, not a reservation: a tool that needs more fails with an error
+  # instead of taking the machine's memory. Heavier images raise it below.
+  mem_limit: 512m
   networks: [analyzers]
   read_only: true
   tmpfs: [/tmp]
@@ -32,6 +35,7 @@ x-env: &env
 
 x-semgrep: &semgrep
   <<: *analyzer
+  mem_limit: 1536m
   build: { context: analyzers, dockerfile: semgrep/Dockerfile }
   image: multi-code-review/semgrep:dev
 
@@ -42,6 +46,7 @@ x-gitleaks: &gitleaks
 
 x-osv: &osv
   <<: *analyzer
+  mem_limit: 1g
   build: { context: analyzers, dockerfile: osv/Dockerfile }
   image: multi-code-review/osv:dev
 
@@ -69,6 +74,7 @@ x-hadolint: &hadolint
 
 x-checkov: &checkov
   <<: *analyzer
+  mem_limit: 1g
   profiles: [infra]
   build: { context: analyzers, dockerfile: checkov/Dockerfile }
   image: multi-code-review/checkov:dev
@@ -81,6 +87,7 @@ x-actionlint: &actionlint
 
 x-depcruise: &depcruise
   <<: *analyzer
+  mem_limit: 1g
   profiles: [node]
   build: { context: analyzers, dockerfile: depcruise/Dockerfile }
   image: multi-code-review/depcruise:dev
@@ -99,6 +106,7 @@ x-archtests: &archtests
 
 x-knip: &knip
   <<: *analyzer
+  mem_limit: 1536m
   profiles: [node]
   build: { context: analyzers, dockerfile: knip/Dockerfile }
   image: multi-code-review/knip:dev
@@ -111,12 +119,14 @@ x-import-linter: &import-linter
 
 x-deptrac: &deptrac
   <<: *analyzer
+  mem_limit: 1280m
   profiles: [php]
   build: { context: analyzers, dockerfile: deptrac/Dockerfile }
   image: multi-code-review/deptrac:dev
 
 x-go-arch-lint: &go-arch-lint
   <<: *analyzer
+  mem_limit: 1g
   profiles: [go]
   build: { context: analyzers, dockerfile: go-arch-lint/Dockerfile }
   image: multi-code-review/go-arch-lint:dev
@@ -126,42 +136,49 @@ x-go-arch-lint: &go-arch-lint
 
 x-node: &node
   <<: *analyzer
+  mem_limit: 2g
   profiles: [node]
   build: { context: analyzers, dockerfile: ts/Dockerfile }
   image: multi-code-review/ts:dev
 
 x-pmd: &pmd
   <<: *analyzer
+  mem_limit: 1536m
   profiles: [jvm]
   build: { context: analyzers, dockerfile: pmd/Dockerfile }
   image: multi-code-review/pmd:dev
 
 x-detekt: &detekt
   <<: *analyzer
+  mem_limit: 1536m
   profiles: [jvm]
   build: { context: analyzers, dockerfile: detekt/Dockerfile }
   image: multi-code-review/detekt:dev
 
 x-php: &php
   <<: *analyzer
+  mem_limit: 1g
   profiles: [php]
   build: { context: analyzers, dockerfile: php/Dockerfile }
   image: multi-code-review/php:dev
 
 x-cppcheck: &cppcheck
   <<: *analyzer
+  mem_limit: 1g
   profiles: [cpp]
   build: { context: analyzers, dockerfile: cppcheck/Dockerfile }
   image: multi-code-review/cppcheck:dev
 
 x-python: &python
   <<: *analyzer
+  mem_limit: 768m
   profiles: [python]
   build: { context: analyzers, dockerfile: python/Dockerfile }
   image: multi-code-review/python:dev
 
 x-ruby: &ruby
   <<: *analyzer
+  mem_limit: 1g
   profiles: [ruby]
   build: { context: analyzers, dockerfile: ruby/Dockerfile }
   image: multi-code-review/ruby:dev
@@ -170,6 +187,7 @@ x-ruby: &ruby
 # (obj/project.assets.json) and NuGet cache, mounted read-only at the same path.
 x-dotnet: &dotnet
   <<: *analyzer
+  mem_limit: 4g
   profiles: [dotnet]
   build: { context: analyzers, dockerfile: dotnet/Dockerfile }
   image: multi-code-review/dotnet:dev
@@ -181,6 +199,7 @@ x-dotnet: &dotnet
 # Go needs module dependencies offline: the host's module cache, read-only.
 x-go: &go
   <<: *analyzer
+  mem_limit: 2g
   profiles: [go]
   build: { context: analyzers, dockerfile: go/Dockerfile }
   image: multi-code-review/go:dev
@@ -193,6 +212,7 @@ x-go: &go
 # a shell.
 x-llm: &llm
   <<: *analyzer
+  mem_limit: 256m
   profiles: [llm]
   build: { context: analyzers, dockerfile: llm/Dockerfile }
   image: multi-code-review/llm:dev
@@ -208,6 +228,7 @@ x-llm-env: &llm-env
 services:
   review-mcp:
     container_name: multi-code-review-review-mcp
+    mem_limit: 768m
     build: gateway
     image: multi-code-review/gateway:dev
     restart: unless-stopped
@@ -242,6 +263,7 @@ services:
   # else: only the gateway reaches it, and it sees no source code itself.
   report-store:
     container_name: multi-code-review-report-store
+    mem_limit: 256m
     build: report-store
     image: multi-code-review/report-store:dev
     restart: unless-stopped
