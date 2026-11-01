@@ -297,6 +297,12 @@ the file. See `examples/settings.yml`.
 
 ### Decisions (`.mcr/decisions.yml`)
 
+Each reviewed repo keeps its own file; the gateway reads it from the repo under
+review, never from this one. The [`.mcr/decisions.yml`](.mcr/decisions.yml) here
+holds this repo's own decisions (its self-review), and doubles as a real
+example. Your repo starts without one; `record_decisions` (or `triage_queue`)
+writes it.
+
 ```yaml
 decisions:
   - id: D-0002
