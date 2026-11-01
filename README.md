@@ -159,14 +159,14 @@ flowchart TB
 | Language | Analyzers (each runs as one container per category) |
 |---|---|
 | All languages | semgrep (rules for most languages), gitleaks (secrets), osv (vulnerable and known-malicious dependencies, from lockfiles), MITRE ATT&CK rules (backdoors, persistence, exfiltration), diff coverage (changed lines no test runs, from your own coverage report), plus the optional LLM reviewer |
-| JavaScript / TypeScript | the repo's own ESLint and TypeScript (`tsc`); dependency-cruiser (cycles, unresolvable and undeclared imports, or the repo's own import rules) |
+| JavaScript / TypeScript | the repo's own ESLint and TypeScript (`tsc`); dependency-cruiser (cycles, unresolvable and undeclared imports, or the repo's own import rules); knip (unused files, exports and dependencies) |
 | Java / Kotlin | PMD, detekt; Spring (code and `application*.properties`/`.yml`) through our own semgrep rules; failed ArchUnit tests, from the repo's own test results |
 | C# / VB.NET | Roslyn analyzers (a real build, offline); SARIF from CI; failed NetArchTest / ArchUnitNET tests, from the repo's own TRX results |
-| PHP | PHPStan |
+| PHP | PHPStan; deptrac layer rules where there is a `deptrac.yaml` |
 | C / C++ | cppcheck |
-| Python | Ruff, Bandit |
+| Python | Ruff, Bandit; import-linter contracts where the repo has them |
 | Ruby | RuboCop, Brakeman; packwerk boundaries (`pks check`) where there is a `packwerk.yml` |
-| Go | golangci-lint (incl. gosec) |
+| Go | golangci-lint (incl. gosec); go-arch-lint where there is a `.go-arch-lint.yml` |
 | Dockerfiles | hadolint (with ShellCheck on `RUN`) |
 | GitHub Actions | zizmor (template injection, permissions, unpinned actions, `pull_request_target`); actionlint (syntax, expressions, ShellCheck on `run:`) |
 | Cloud IaC: AWS, Azure, GCP | checkov, offline (Terraform, Bicep/ARM, CloudFormation/SAM, Serverless) |
@@ -451,14 +451,14 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 | Profile | Starts when | Containers |
 |---|---|---|
 | core | always | `{security,best-practices,correctness,reliability}-semgrep`, `security-gitleaks` (secrets in the files under review, redacted; repo `.gitleaks.toml` if any), `security-osv` (changed lockfiles, offline vulnerability database), `security-mitre-attack` (MITRE ATT&CK techniques), `testing-coverage` (diff coverage); all three below |
-| node | JS/TS found | `*-eslint` (all six), `correctness-tsc`, from the repo's own `node_modules`; `architecture-depcruise` (repo `.dependency-cruiser.*` if any) |
+| node | JS/TS found | `*-eslint` (all six), `correctness-tsc`, from the repo's own `node_modules`; `architecture-depcruise` (repo `.dependency-cruiser.*` if any); `best-practices-knip` (repo knip config if any) |
 | jvm | Java/Kotlin found | `*-pmd` (Java, repo ruleset if any), `*-detekt` (Kotlin, `.kt`/`.kts`, repo `detekt.yml` if any), `architecture-archunit` (JUnit XML the repo's test run wrote) |
 | dotnet | C#/VB.NET found | `*-roslyn`: `dotnet build --no-restore` into `/tmp`, from the host's `obj/project.assets.json` and NuGet cache (mounted read-only); also `.mcr/sarif/**/*.sarif`; `architecture-netarchtest` (TRX the repo's test run wrote) |
-| php | PHP found | `*-phpstan` (repo `phpstan.neon` if any, else level 5) |
+| php | PHP found | `*-phpstan` (repo `phpstan.neon` if any, else level 5); `architecture-deptrac` (only with a deptrac config) |
 | cpp | C/C++ found | `*-cppcheck` |
-| python | Python found | `*-ruff`, `security-bandit` (Ruff's S rules are left to Bandit) |
+| python | Python found | `*-ruff`, `security-bandit` (Ruff's S rules are left to Bandit); `architecture-import-linter` (only with import-linter contracts) |
 | ruby | Ruby found | `*-rubocop`, `security-brakeman`, `architecture-packwerk` (only with `packwerk.yml`) |
-| go | Go found | `*-golangci-lint`, from the host's module cache (`go mod download` first) |
+| go | Go found | `*-golangci-lint`, from the host's module cache (`go mod download` first); `architecture-go-arch-lint` (only with `.go-arch-lint.yml`) |
 | infra | Dockerfiles, compose, workflows, Terraform, Bicep or cloud templates found | `best-practices-hadolint` (repo `.hadolint.yaml` if any); `security-checkov`, `reliability-checkov` (repo `.checkov.yaml` if any, `checkov:skip=` comments); `security-zizmor` (workflows and `action.yml`, repo `zizmor.yml` if any); `correctness-actionlint` (workflows, repo `.github/actionlint.yaml` if any) |
 | llm | `secrets/llm_api_key` | `<category>-llm` for all six |
 
@@ -509,6 +509,19 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
   layer and folder-privacy violations land on the reference. pks only reports
   boundaries a pack enforces, and leaves out what `package_todo.yml` already
   records, so findings are high: `packwerk check` would fail on them too.
+- **knip:** unused files, exports, types and dependencies, and imports or
+  binaries missing from `package.json`, per project (workspaces from their
+  root). Only findings in the changed files count, and never high: unused
+  files, exports and dependencies are medium, types and members low. Like
+  depcruise it needs `node_modules`, and the repo's knip and tool configs run
+  in the sandboxed container.
+- **import-linter, go-arch-lint, deptrac:** the repo's own architecture rules
+  for Python (import-linter contracts in `.importlinter`, `setup.cfg` or
+  `pyproject.toml`), Go (`.go-arch-lint.yml`) and PHP (`deptrac.yaml`, or a `deptrac.php`, which runs in the sandboxed
+  container like an ESLint config). They
+  run only where that config exists; there are no default rules. Each broken
+  rule lands on the import (or use) that breaks it, and is high: the repo's own
+  check would fail on it in CI. All three read source statically.
 - **archunit, netarchtest:** architecture tests are tests the repo writes and
   runs itself (ArchUnit; NetArchTest or ArchUnitNET). The container never runs
   repo code: it reads the results your test run left (JUnit XML in
@@ -632,10 +645,10 @@ they stay offline and fast:
 
 | Container | Profile | How it plugs in |
 |---|---|---|
-| `architecture-import-linter` | python | import-linter contracts from the repo's `.importlinter` / `pyproject.toml`; a broken contract lands on the import line |
-| `architecture-go-arch-lint` | go | go-arch-lint with the repo's `.go-arch-lint.yml`, from the host's module cache |
-| `architecture-deptrac` | php | deptrac with the repo's `deptrac.yaml`; a layer violation lands on the use |
-| `best-practices-knip` | node | unused files, exports and dependencies, from the repo's `node_modules` |
+| `security-govulncheck` | go | govulncheck in source mode against an OSV database baked into the image, from the host's module cache; only vulnerabilities the code actually reaches |
+| `correctness-mypy` | python | mypy with the repo's config, from the repo's own virtualenv (like eslint uses `node_modules`) |
+| `security-psalm` | php | Psalm taint analysis (`--taint-analysis`): user input that reaches SQL, shell or HTML |
+| `security-trivy` | infra | Trivy config scan (Kubernetes manifests, Helm charts) with its checks bundled offline, next to checkov |
 
 ### Develop
 
@@ -665,7 +678,8 @@ design notes are in [docs/research/multi-language.md](docs/research/multi-langua
    ✅ `security-osv`, ✅ `security-zizmor`, ✅ `testing-coverage`,
    ✅ `best-practices-hadolint`, ✅ `{security,reliability}-checkov`,
    ✅ `correctness-actionlint`, ✅ architecture: `architecture-depcruise`,
-   `-packwerk`, `-archunit`, `-netarchtest`; next import-linter (Python),
-   go-arch-lint, deptrac (PHP) (see [Adding an analyzer](#adding-an-analyzer)).
+   `-packwerk`, `-archunit`, `-netarchtest`, `-import-linter`,
+   `-go-arch-lint`, `-deptrac`, ✅ `best-practices-knip`; next see
+   [Adding an analyzer](#adding-an-analyzer).
 7. ✅ Agent gate: a Claude Code Stop hook keeps the agent working while the
    review blocks.
