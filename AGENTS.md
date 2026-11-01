@@ -11,12 +11,13 @@ Be extremely concise. README.md has the architecture, tools and decision format.
   - `diff.ts`, `findings.ts`, `decisions.ts`, `report.ts`, `catalog.ts`, `detect.ts`, `settings.ts`, `judge.ts` – pure logic.
   - `jev.ts` – TypeSafe Jev client (I/O); `setup.ts` – stack scan run by `setup.sh`.
 - `analyzers/_kit/serve.mjs` – shared contract: `GET /info`, `POST /analyze` → SARIF 2.1.0; path checks, one-category filter.
-- `analyzers/<tool>/adapter.mjs` + `Dockerfile` – `semgrep`, `ts` (eslint/tsc), `pmd`, `detekt`, `dotnet` (roslyn), `php` (phpstan), `cppcheck`, `python` (ruff/bandit), `ruby` (rubocop/brakeman), `go` (golangci-lint), `gitleaks` (secrets, core), `mitre-attack` (MITRE ATT&CK line rules, no binary, core), `hadolint` (Dockerfiles, infra), `checkov` (cloud IaC: AWS, Azure, GCP; infra), `llm`. `gitleaks` and `hadolint` are the minimal examples to copy. `MCR_TOOLS` picks the tool where an image has two.
+- `analyzers/<tool>/adapter.mjs` + `Dockerfile` – `semgrep`, `ts` (eslint/tsc), `pmd`, `detekt`, `dotnet` (roslyn), `php` (phpstan), `cppcheck`, `python` (ruff/bandit), `ruby` (rubocop/brakeman), `go` (golangci-lint), `gitleaks` (secrets, core), `mitre-attack` (MITRE ATT&CK line rules, no binary, core), `hadolint` (Dockerfiles, infra), `checkov` (cloud IaC: AWS, Azure, GCP; infra), `osv` (vulnerable and malicious dependencies, offline DB baked in; core), `zizmor` (GitHub Actions; infra), `coverage` (diff coverage from existing reports, no binary; core), `llm`. `gitleaks` and `hadolint` are the minimal examples to copy. `MCR_TOOLS` picks the tool where an image has two.
 - `compose.yaml` – one service per `<category>-<tool>`, grouped in profiles; must match `catalog.ts` (tested). Plus `review-mcp` and `report-store`.
 - `report-store/` – keeps review pages (HTML with code) on the `reports` volume for `MCR_REPORT_TTL_DAYS` (7). Only the gateway reaches it (`reports` network, internal); `gateway/src/reportStore.ts` is its client.
 - `setup.sh` – detects stacks, writes `.env` (`COMPOSE_PROFILES`), starts compose. Keys are Docker secrets in `secrets/`.
 - `aspire-apphost/apphost.mts` – Aspire wrapper: runs the compose stack, one log resource per container from `catalog.ts`. `scripts/status.mjs` prints MCP URL, tools, dashboard.
 - `scripts/mcr.mjs` – CLI over the gateway's MCP tools (review, fix-report, triage, detect, analyzers); exit 1 on blocking. Zero deps.
+- `scripts/stop-gate.mjs` + `hooks/hooks.json` – plugin Stop hook: the agent can't finish while the review blocks (opt-in `agent.gate`). Fails open.
 - `scripts/github-review.mjs` – pure: a review as a GitHub PR review (summary + P1/P2/P3 line comments).
 - `.github/workflows/review.yml` – reusable PR workflow (runs the CLI, posts the review); `self-review.yml` runs it on this repo. Caller template in `examples/github-workflow.yml`.
 - `skills/start-app/` – start the service and report where it answers.

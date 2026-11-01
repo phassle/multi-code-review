@@ -25,6 +25,38 @@ decided about its findings.
 
 ---
 
+## More code, same quality bar
+
+Teams now ship far more code than before, much of it written by AI
+assistants. If review does not keep up, the arithmetic is simple: more code at
+the same defect rate means more bugs in production, in less time. The quality
+bar has to rise with the volume, and that only works if most of the checking
+is automatic, fast and the same every time. This repo tries out one way to do
+that:
+
+- **Deterministic first.** Analyzers give the same answer every time, in
+  seconds, without internet. A language model adds judgment where rules cannot
+  (a change against your ADRs), and Jev weighs whether each finding is real.
+  Models may only soften a verdict, never add blocking, and never decide
+  security on their own.
+- **In the loop, not after it.** The assistant runs the review itself over MCP
+  while it works. With the [agent gate](#the-agent-gate) on, a Claude Code
+  agent cannot finish its turn while the review blocks: the findings go back
+  to it, and it keeps working.
+- **Aimed at what generated code gets wrong:** vulnerable dependencies, and
+  packages attackers registered under names assistants tend to invent, once
+  they are on OpenSSF's malicious-package list (osv); pasted secrets
+  (gitleaks); code that behaves like an attack, such as install hooks,
+  backdoors and exfiltration (MITRE ATT&CK rules); injectable CI workflows
+  (zizmor); and changed lines that no test runs (diff coverage).
+- **It remembers.** Team decisions live in `.mcr/decisions.yml` and are
+  reviewed like code. The hundredth pull request does not reopen what the
+  team settled on the first.
+- **The same gate everywhere:** the same containers run on a laptop, behind
+  the assistant, and on every pull request.
+
+---
+
 ## The short version (ELI5)
 
 Think of a team of specialist inspectors checking a house before you move in.
@@ -81,7 +113,7 @@ flowchart TB
         gw["🚪 review-mcp gateway<br/>diff · routing · levels · decisions"]
         repo[("📁 Code under MCR_ROOT, read-only<br/>.mcr/settings.yml · .mcr/decisions.yml")]
         subgraph net["🔒 no internet"]
-            an["🔍 Analyzers, one container per category<br/>semgrep · gitleaks · mitre-attack · eslint · tsc · roslyn · pmd · ruff · hadolint …"]
+            an["🔍 Analyzers, one container per category<br/>semgrep · gitleaks · osv · mitre-attack · coverage · eslint · tsc · roslyn · pmd · ruff · hadolint …"]
         end
         llm["🧠 LLM reviewers (optional)"]
     end
@@ -123,7 +155,7 @@ flowchart TB
 
 | Language | Analyzers (each runs as one container per category) |
 |---|---|
-| All languages | semgrep (rules for most languages), gitleaks (secrets), MITRE ATT&CK rules (backdoors, persistence, exfiltration), plus the optional LLM reviewer |
+| All languages | semgrep (rules for most languages), gitleaks (secrets), osv (vulnerable and known-malicious dependencies, from lockfiles), MITRE ATT&CK rules (backdoors, persistence, exfiltration), diff coverage (changed lines no test runs, from your own coverage report), plus the optional LLM reviewer |
 | JavaScript / TypeScript | the repo's own ESLint and TypeScript (`tsc`) |
 | Java / Kotlin | PMD, detekt; Spring (code and `application*.properties`/`.yml`) through our own semgrep rules |
 | C# / VB.NET | Roslyn analyzers (a real build, offline); SARIF from CI |
@@ -133,6 +165,7 @@ flowchart TB
 | Ruby | RuboCop, Brakeman |
 | Go | golangci-lint (incl. gosec) |
 | Dockerfiles | hadolint (with ShellCheck on `RUN`) |
+| GitHub Actions | zizmor (template injection, permissions, unpinned actions, `pull_request_target`) |
 | Cloud IaC: AWS, Azure, GCP | checkov, offline (Terraform, Bicep/ARM, CloudFormation/SAM, Serverless) |
 | Scala, Rust, Swift | semgrep only (plus the all-language rows); `detect_stack` names the analyzer that would come next |
 
@@ -185,6 +218,28 @@ The pages are served only through the gateway, to allowed hosts.
 - **Others:** a streamable-HTTP MCP server at `http://127.0.0.1:7700/mcp`. Give
   the agent `skills/multi-code-review/SKILL.md` as instructions.
 
+### The agent gate
+
+The Claude Code plugin ships a Stop hook (`hooks/hooks.json`,
+`scripts/stop-gate.mjs`). Each time the agent finishes a turn, it reviews the
+repo the agent worked in. While the review blocks, the agent is not allowed to
+stop: the blocking findings go back to it as the reason to keep working. The
+agent is told to fix them, never to silence them: decisions stay with people.
+The gate is opt-in per repo:
+
+```yaml
+# .mcr/settings.yml
+agent:
+  gate: true
+```
+
+`MCR_GATE=1` turns it on for every repo, and `MCR_GATE=0` turns it off. The
+gate never traps the agent. If the gateway is down, the repo is outside
+`MCR_ROOT` or the review fails, the agent may stop and you see a note. After
+three blocked rounds in a row it hands over to you. Without the plugin, add
+the same hook to `.claude/settings.json`, with the path to your checkout's
+`scripts/stop-gate.mjs`.
+
 **From a terminal or CI** (no assistant; the gateway must be running):
 
 ```bash
@@ -202,7 +257,8 @@ error or no gateway. `--out` writes the Markdown report; `--github-review` write
 a GitHub pull request review (see [Pull requests on GitHub](#pull-requests-on-github)).
 
 Skills: `skills/multi-code-review` (review, triage, decide) and
-`skills/start-app` (start the service and report where it answers).
+`skills/start-app` (start the service and report where it answers). Hook:
+the [agent gate](#the-agent-gate).
 
 ## Day to day
 
@@ -384,7 +440,7 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 
 | Profile | Starts when | Containers |
 |---|---|---|
-| core | always | `{security,best-practices,correctness,reliability}-semgrep`, `security-gitleaks` (secrets in the files under review, redacted; repo `.gitleaks.toml` if any), `security-mitre-attack` (MITRE ATT&CK techniques, see below) |
+| core | always | `{security,best-practices,correctness,reliability}-semgrep`, `security-gitleaks` (secrets in the files under review, redacted; repo `.gitleaks.toml` if any), `security-osv` (changed lockfiles, offline vulnerability database), `security-mitre-attack` (MITRE ATT&CK techniques), `testing-coverage` (diff coverage); all three below |
 | node | JS/TS found | `*-eslint` (all six), `correctness-tsc`, from the repo's own `node_modules` |
 | jvm | Java/Kotlin found | `*-pmd` (Java, repo ruleset if any), `*-detekt` (Kotlin, `.kt`/`.kts`, repo `detekt.yml` if any) |
 | dotnet | C#/VB.NET found | `*-roslyn`: `dotnet build --no-restore` into `/tmp`, from the host's `obj/project.assets.json` and NuGet cache (mounted read-only); also `.mcr/sarif/**/*.sarif` |
@@ -393,7 +449,7 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 | python | Python found | `*-ruff`, `security-bandit` (Ruff's S rules are left to Bandit) |
 | ruby | Ruby found | `*-rubocop`, `security-brakeman` |
 | go | Go found | `*-golangci-lint`, from the host's module cache (`go mod download` first) |
-| infra | Dockerfiles, compose, workflows, Terraform, Bicep or cloud templates found | `best-practices-hadolint` (repo `.hadolint.yaml` if any); `security-checkov`, `reliability-checkov` (repo `.checkov.yaml` if any, `checkov:skip=` comments) |
+| infra | Dockerfiles, compose, workflows, Terraform, Bicep or cloud templates found | `best-practices-hadolint` (repo `.hadolint.yaml` if any); `security-checkov`, `reliability-checkov` (repo `.checkov.yaml` if any, `checkov:skip=` comments); `security-zizmor` (workflows and `action.yml`, repo `zizmor.yml` if any) |
 | llm | `secrets/llm_api_key` | `<category>-llm` for all six |
 
 - checkov has no severity offline, so the adapter grades its checks: data open
@@ -403,10 +459,31 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
   protection go to reliability (medium), Multi-AZ and replication low.
   Terraform is scanned per module directory, templates per file; JSON and YAML
   count only when they look like CloudFormation, SAM, Serverless or ARM.
+- **osv:** osv-scanner over the lockfiles and manifests in the change (npm,
+  yarn, pnpm, bun, pip/requirements, Poetry, uv, Pipenv, Go, Cargo, Bundler,
+  Composer, NuGet, Gradle, Maven, Pub, Mix, renv, SwiftPM). The OSV database
+  for 12 ecosystems is downloaded when the image is built, so the container
+  never goes online. Rebuild it to refresh the database; a note warns once it
+  is older than 14 days. Each finding lands on the lockfile line of the
+  package, so a newly added vulnerable dependency blocks. `MAL-` advisories
+  (OpenSSF malicious packages) are always high. Otherwise CVSS 7 or more is
+  high, 4 or more medium. With `--offline` there is no transitive resolution,
+  so a bare manifest such as `pom.xml` gives direct dependencies only; commit
+  lockfiles.
+- **zizmor:** GitHub Actions security, offline (no online audits). High
+  severity blocks only when zizmor's confidence is medium or high.
+  `# zizmor: ignore[...]` comments are honoured.
+- **coverage:** diff coverage. It never runs tests: it reads the coverage
+  report your own test run wrote (lcov, Cobertura including coverage.py and
+  coverlet, JaCoCo, Go cover profiles, SimpleCov). It reports each range of
+  changed lines that no test executes. It skips a report older than the file
+  it would judge, and says so when there is none. Findings are medium: shown
+  at the default level, blocking only when `testing` is `maximum`. In CI,
+  run the tests with coverage in `prepare`.
 - **mitre-attack:** code that carries out a [MITRE ATT&CK](https://attack.mitre.org/)
   technique, as opposed to a vulnerability: reverse shells, piped or encoded
-  installers, decoded-payload `eval`, web shells, install hooks in
-  `package.json` that reach out (T1195.002), log and history wiping, disabled
+  installers, decoded-payload `eval`, web shells, install hooks that reach out
+  (`package.json` scripts, `setup.py`, `build.rs`; T1195.002), log and history wiping, disabled
   defenses, SSH key, cron, systemd, shell-profile and Run-key persistence,
   credential-store reads, environment dumps, miners and exfiltration endpoints.
   One container (all of it is security), plain JavaScript line rules with no
@@ -439,6 +516,8 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 | [T1059](https://attack.mitre.org/techniques/T1059/) | Download and execute | `T1059-download-execute` | medium |
 | [T1059.001](https://attack.mitre.org/techniques/T1059/001/) | Encoded PowerShell | `T1059.001-encoded-powershell` | high |
 | [T1195.002](https://attack.mitre.org/techniques/T1195/002/) | Package install hook reaching out | `T1195.002-install-hook` | high (package.json) |
+| [T1195.002](https://attack.mitre.org/techniques/T1195/002/) | setup.py reaching out | `T1195.002-setup-py-network` | high (setup.py) |
+| [T1195.002](https://attack.mitre.org/techniques/T1195/002/) | Build script downloading or shelling out | `T1195.002-build-script` | medium (build.rs) |
 | [T1027](https://attack.mitre.org/techniques/T1027/) | Executes decoded payload | `T1027-decode-eval` | high |
 | [T1505.003](https://attack.mitre.org/techniques/T1505/003/) | Web shell | `T1505.003-web-shell` | high |
 | [T1070](https://attack.mitre.org/techniques/T1070/) | Indicator removal | `T1070-clear-traces` | high |
@@ -514,12 +593,10 @@ they stay offline and fast:
 
 | Container | Profile | How it plugs in |
 |---|---|---|
-| `security-osv` | core | osv-scanner on lockfiles with `--offline`; the vulnerability database is downloaded at image build, so rebuild to refresh it. Report on the lockfile line of the package, so a newly added vulnerable dependency blocks |
-| `security-zizmor` | infra | `zizmor --offline --format sarif` on `.github/workflows/*.yml` and `action.yml` |
 | `architecture-depcruise` | node | dependency-cruiser with the repo's `.dependency-cruiser.*`, else a default set (no cycles, no unresolvable or undeclared imports); a violation lands on the import line |
 | `architecture-packwerk` | ruby | `pks check` (static Rust port of packwerk, no Rails boot) on repos with `packwerk.yml` |
 | `architecture-archunit`, `architecture-netarchtest` | jvm, dotnet | These are tests the repo writes and runs itself; the container must not run repo code. It reads their results instead (JUnit XML from `target/surefire-reports`, `build/test-results`, TRX), and turns failed architecture tests into findings on the violating class (ArchUnit prints `(File.java:42)`) |
-| `testing-coverage` | core | Diff coverage: read the coverage report the repo's tests already wrote (lcov, Cobertura, JaCoCo, Go cover profile, SimpleCov) and report changed lines no test runs. Never blocking. Skips a report older than the file |
+| `security-actionlint` | infra | actionlint for workflow syntax and expressions, next to zizmor's security audits |
 
 ### Develop
 
@@ -545,8 +622,10 @@ design notes are in [docs/research/multi-language.md](docs/research/multi-langua
    thread to record decisions.
 5. Jev as a first pass over every hunk (checklist questions per category),
    with the LLM only on what it flags (research §11).
-6. More containers: ✅ `security-gitleaks`, ✅ `security-mitre-attack`, ✅ `best-practices-hadolint`,
-   ✅ `{security,reliability}-checkov`;
-   next `security-osv`, `security-zizmor`, architecture tools
-   (dependency-cruiser, ArchUnit, NetArchTest, packwerk) and diff coverage for
-   testing (see [Adding an analyzer](#adding-an-analyzer)).
+6. More containers: ✅ `security-gitleaks`, ✅ `security-mitre-attack`,
+   ✅ `security-osv`, ✅ `security-zizmor`, ✅ `testing-coverage`,
+   ✅ `best-practices-hadolint`, ✅ `{security,reliability}-checkov`; next
+   architecture tools (dependency-cruiser, ArchUnit, NetArchTest, packwerk)
+   (see [Adding an analyzer](#adding-an-analyzer)).
+7. ✅ Agent gate: a Claude Code Stop hook keeps the agent working while the
+   review blocks.
