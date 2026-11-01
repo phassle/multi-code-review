@@ -138,9 +138,9 @@ describe('analyzer registry', () => {
 });
 
 describe('neverBlocks', () => {
-  it('holds for the LLM intent checks only', () => {
-    expect(neverBlocks({ analyzer: 'correctness-llm', ruleId: 'intent-missing-part' })).toBe(true);
-    expect(neverBlocks({ analyzer: 'correctness-llm', ruleId: 'off-by-one' })).toBe(false);
-    expect(neverBlocks({ analyzer: 'correctness-semgrep', ruleId: 'intent-x' })).toBe(false);
+  it('holds for every model finding and nothing else', () => {
+    expect(neverBlocks({ analyzer: 'correctness-llm' })).toBe(true);
+    expect(neverBlocks({ analyzer: 'security-llm' })).toBe(true);
+    expect(neverBlocks({ analyzer: 'correctness-semgrep' })).toBe(false);
   });
 });

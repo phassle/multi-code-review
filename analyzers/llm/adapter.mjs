@@ -190,7 +190,7 @@ export function runTool(root, name, args) {
   return `error: unknown tool ${name}`;
 }
 
-/** A model is not deterministic: it reports high (which can block) only at confidence >= 0.8; unknown severities are medium. */
+/** A model is not deterministic: it reports high only at confidence >= 0.8; unknown severities are medium. Model findings never block (gateway). */
 export function severityOf(f) {
   const severity = ['high', 'medium', 'low'].includes(f.severity) ? f.severity : 'medium';
   return severity === 'high' && !(Number(f.confidence) >= 0.8) ? 'medium' : severity;

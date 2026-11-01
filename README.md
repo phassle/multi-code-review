@@ -730,7 +730,8 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
   - It has read-only tools only (`read_file`, `list_dir`, `grep`) and reports
     through a fixed `report_findings` schema.
   - Findings off changed lines, or with confidence below 0.5, are dropped.
-  - High severity needs confidence ≥ 0.8.
+  - High severity needs confidence ≥ 0.8. Its findings never block; they
+    rank and inform.
   - Without a key in `secrets/llm_api_key` the `llm` profile does not start
     (`./setup.sh`); if it runs anyway, each reviewer skips with a note.
 - **Intent:** up to 4,000 characters of what the change is meant to do. It
