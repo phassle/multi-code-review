@@ -49,7 +49,7 @@ export const STACKS: StackDef[] = [
   { id: 'rust', label: 'Rust', extensions: ['.rs'], manifests: ['Cargo.toml'], semgrep: ['.rs'], next: 'clippy (needs a build)' },
   { id: 'cpp', label: 'C / C++', extensions: ['.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh'], manifests: ['CMakeLists.txt', '.vcxproj', 'Makefile'], profile: 'cpp', semgrep: ['.c'], next: 'clang-tidy (needs compile_commands.json)' },
   { id: 'swift', label: 'Swift', extensions: ['.swift'], manifests: ['Package.swift', '.xcodeproj'], semgrep: ['.swift'], next: 'SwiftLint' },
-  { id: 'infra', label: 'Docker / CI / cloud IaC', extensions: ['.tf', '.bicep'], manifests: ['Dockerfile', 'docker-compose.yml', 'compose.yaml', ...CLOUD_TEMPLATES], profile: 'infra', semgrep: ['Dockerfile', '.yml', '.yaml'], next: 'zizmor (GitHub Actions)' },
+  { id: 'infra', label: 'Docker / CI / cloud IaC', extensions: ['.tf', '.bicep'], manifests: ['Dockerfile', 'docker-compose.yml', 'compose.yaml', ...CLOUD_TEMPLATES], profile: 'infra', semgrep: ['Dockerfile', '.yml', '.yaml'], next: 'actionlint (workflow syntax), Trivy config (more IaC)' },
 ];
 
 /** A stack counts when it has a manifest or at least this many files. */
@@ -131,6 +131,8 @@ const TOOL_FILES: Record<string, string[]> = {
   detekt: ['.kt', '.kts'],
   hadolint: ['Dockerfile', DOCKERFILE_VARIANT],
   checkov: ['.tf', '.bicep', CLOUD_TEMPLATE],
+  // Only workflows give an infra stack a .yml kind (compose files are manifests, not owned files).
+  zizmor: ['.yml', '.yaml'],
 };
 
 /** Analyzers per category for a stack, given the profiles that run. */

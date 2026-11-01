@@ -39,6 +39,22 @@ x-gitleaks: &gitleaks
   build: { context: analyzers, dockerfile: gitleaks/Dockerfile }
   image: multi-code-review/gitleaks:dev
 
+x-osv: &osv
+  <<: *analyzer
+  build: { context: analyzers, dockerfile: osv/Dockerfile }
+  image: multi-code-review/osv:dev
+
+x-coverage: &coverage
+  <<: *analyzer
+  build: { context: analyzers, dockerfile: coverage/Dockerfile }
+  image: multi-code-review/coverage:dev
+
+x-zizmor: &zizmor
+  <<: *analyzer
+  profiles: [infra]
+  build: { context: analyzers, dockerfile: zizmor/Dockerfile }
+  image: multi-code-review/zizmor:dev
+
 x-mitre-attack: &mitre-attack
   <<: *analyzer
   build: { context: analyzers, dockerfile: mitre-attack/Dockerfile }
@@ -204,6 +220,14 @@ services:
     <<: *mitre-attack
     container_name: multi-code-review-security-mitre-attack
     environment: { <<: *env, MCR_CATEGORY: security }
+  security-osv:
+    <<: *osv
+    container_name: multi-code-review-security-osv
+    environment: { <<: *env, MCR_CATEGORY: security }
+  security-zizmor:
+    <<: *zizmor
+    container_name: multi-code-review-security-zizmor
+    environment: { <<: *env, MCR_CATEGORY: security }
   security-eslint:
     <<: *node
     container_name: multi-code-review-security-eslint
@@ -230,6 +254,10 @@ services:
     environment: { <<: *env, MCR_CATEGORY: best-practices, MCR_TOOLS: eslint }
 
   # testing
+  testing-coverage:
+    <<: *coverage
+    container_name: multi-code-review-testing-coverage
+    environment: { <<: *env, MCR_CATEGORY: testing }
   testing-eslint:
     <<: *node
     container_name: multi-code-review-testing-eslint

@@ -25,6 +25,8 @@ export const CATALOG: CatalogEntry[] = [
   ...entries('semgrep', 'core', ['security', 'best-practices', 'correctness', 'reliability']),
   ...entries('gitleaks', 'core', ['security']),
   ...entries('mitre-attack', 'core', ['security']),
+  ...entries('osv', 'core', ['security']),
+  ...entries('coverage', 'core', ['testing']),
   ...entries('eslint', 'node', ['security', 'architecture', 'best-practices', 'testing', 'correctness', 'reliability']),
   ...entries('tsc', 'node', ['correctness']),
   ...entries('pmd', 'jvm', ['security', 'architecture', 'best-practices', 'correctness', 'reliability']),
@@ -39,11 +41,12 @@ export const CATALOG: CatalogEntry[] = [
   ...entries('golangci-lint', 'go', ['security', 'best-practices', 'correctness', 'reliability']),
   ...entries('hadolint', 'infra', ['best-practices']),
   ...entries('checkov', 'infra', ['security', 'reliability']),
+  ...entries('zizmor', 'infra', ['security']),
   ...entries('llm', 'llm', ['security', 'architecture', 'best-practices', 'testing', 'correctness', 'reliability']),
 ];
 
 /** Tools that read any language: they cover every stack. */
-export const UNIVERSAL_TOOLS = new Set(['llm', 'gitleaks', 'mitre-attack']);
+export const UNIVERSAL_TOOLS = new Set(['llm', 'gitleaks', 'mitre-attack', 'osv', 'coverage']);
 
 /** Model reviewers: skipped at level minimum and on trivial diffs (settings.ts `runs`). Deterministic tools always run. */
 export const MODEL_TOOLS = new Set(['llm']);
