@@ -60,8 +60,19 @@ function unxml(s) {
   );
 }
 
+// One literal pattern per attribute the parsers read (no regex built from input).
+const ATTRS = {
+  filename: /\sfilename\s*=\s*(?:"([^"]*)"|'([^']*)')/,
+  number: /\snumber\s*=\s*(?:"([^"]*)"|'([^']*)')/,
+  hits: /\shits\s*=\s*(?:"([^"]*)"|'([^']*)')/,
+  name: /\sname\s*=\s*(?:"([^"]*)"|'([^']*)')/,
+  nr: /\snr\s*=\s*(?:"([^"]*)"|'([^']*)')/,
+  mi: /\smi\s*=\s*(?:"([^"]*)"|'([^']*)')/,
+  ci: /\sci\s*=\s*(?:"([^"]*)"|'([^']*)')/,
+};
+
 function attr(tag, name) {
-  const m = tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`));
+  const m = tag.match(ATTRS[name]);
   return m ? unxml(m[1] ?? m[2]) : undefined;
 }
 
