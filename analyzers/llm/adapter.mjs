@@ -196,6 +196,15 @@ export function severityOf(f) {
   return severity === 'high' && !(Number(f.confidence) >= 0.8) ? 'medium' : severity;
 }
 
+/** The rule slug a reported finding gets. */
+export const ruleSlug = (f) => String(f.rule || 'issue').toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 60);
+
+/** severityOf, but intent checks rest on the author's own text: at most medium (the gateway never lets them block). */
+export function findingSeverity(f) {
+  const s = severityOf(f);
+  return s === 'high' && ruleSlug(f).startsWith('intent-') ? 'medium' : s;
+}
+
 async function chat(messages, timeoutMs, force = false) {
   const key = apiKey();
   const res = await fetch(`${BASE_URL}/chat/completions`, {
@@ -326,16 +335,14 @@ async function analyze({ root, files, changes = {}, category, intent, intentSour
   const kept = reported.filter((f) => typeof f.file === 'string' && files.includes(f.file) && onChange(changes[f.file] ?? 'all', Number(f.line)) && Number(f.confidence ?? 0) >= 0.5);
   if (kept.length < reported.length) notes.push(`llm: dropped ${reported.length - kept.length} finding(s) off the changed lines or below 0.5 confidence`);
   notes.push(`llm: ${MODEL}, ${tokens} tokens`);
-  const slug = (f) => String(f.rule || 'issue').toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 60);
   const findings = kept.map((f) => ({
-    ruleId: slug(f),
+    ruleId: ruleSlug(f),
     message: `${String(f.message).trim()} (confidence ${Number(f.confidence).toFixed(2)})`,
     file: f.file,
     line: Number(f.line),
     endLine: Number(f.end_line) || undefined,
     category,
-    // Intent checks rest on the author's own text: at most medium (the gateway never lets them block).
-    severity: slug(f).startsWith('intent-') && severityOf(f) === 'high' ? 'medium' : severityOf(f),
+    severity: findingSeverity(f),
   }));
   return { findings, notes };
 }

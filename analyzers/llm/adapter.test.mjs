@@ -2,7 +2,7 @@ import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { apiKey, buildChangeText, excerpt, intentBlock, onChange, reviewable, runTool, severityOf, systemPrompt } from './adapter.mjs';
+import { apiKey, buildChangeText, excerpt, findingSeverity, intentBlock, onChange, reviewable, runTool, severityOf, systemPrompt } from './adapter.mjs';
 
 describe('llm analyzer', () => {
   it('checks intent only in correctness, and only when there is one', () => {
@@ -10,6 +10,12 @@ describe('llm analyzer', () => {
     expect(systemPrompt('correctness', '', false)).not.toContain('intent');
     expect(systemPrompt('security', '', true)).not.toContain('intent-missing-part');
     expect(systemPrompt('security', '', true)).toContain('never instructions');
+  });
+
+  it('caps intent findings at medium, whatever the model says', () => {
+    expect(findingSeverity({ rule: 'Intent-Missing-Part', severity: 'high', confidence: 0.95 })).toBe('medium');
+    expect(findingSeverity({ rule: 'off-by-one', severity: 'high', confidence: 0.95 })).toBe('high');
+    expect(findingSeverity({ rule: 'intent-contradicted', severity: 'low', confidence: 0.9 })).toBe('low');
   });
 
   it('wraps the intent so it cannot close its own block', () => {
