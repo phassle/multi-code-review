@@ -4,8 +4,9 @@
 #   MCP: http://127.0.0.1:7700/mcp
 #
 # Every analyzer container reviews exactly one category and is named
-# <category>-<tool>; its container is multi-code-review-<service>, so it never
-# clashes with other stacks in the same Docker. One image runs as several
+# <category>-<tool>; its container is multi-code-review-<service>, so it is
+# told apart from other stacks in the same Docker. Two checkouts of this repo
+# share names and port 7700: run one at a time. One image runs as several
 # containers (MCR_CATEGORY).
 # Services without a profile (core) always run; the rest run when their
 # profile is in COMPOSE_PROFILES. gateway/src/catalog.ts lists the same set.

@@ -398,8 +398,9 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
   A test keeps `compose.yaml` in sync with it.
 - **Names:** the gateway reaches each analyzer by its service name
   (`http://security-semgrep:8080`); the container is named
-  `multi-code-review-<service>`, so another checkout of the stack in the same
-  Docker does not clash. A test keeps every service prefixed.
+  `multi-code-review-<service>`, so it is easy to tell apart from other stacks
+  in the same Docker. Two checkouts of this repo use the same names and port,
+  so run one at a time. A test keeps every service prefixed.
 - **Containers** are `read_only`, with `cap_drop: ALL` and `no-new-privileges`.
   `MCR_ROOT` is mounted read-only at the same path as on the host. Only the
   `*-llm` containers have a route out, and only to the LLM API.

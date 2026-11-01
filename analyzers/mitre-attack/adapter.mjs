@@ -13,7 +13,7 @@
 // Some patterns spell a literal as a character class (`cur[l]`) so that this
 // file does not match its own rules.
 
-import { readFileSync } from 'node:fs';
+import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { serve } from '../_kit/serve.mjs';
 
 const info = { name: 'mitre-attack', version: 'mitre-attack-v18', languages: ['any'], extensions: ['*'] };
@@ -34,7 +34,8 @@ export const RULES = [
     technique: 'T1059.004',
     name: 'Reverse shell',
     severity: 'high',
-    pattern: /\/dev\/(?:tcp|udp)\/[\w.$-]+\/\d|\b(?:nc|ncat|netcat)\b[^\n]*\s(?:-e|-c|--exec|--sh-exec)\s+\S*(?:sh|cmd(?:\.exe)?)\b|\bsocat\b[^\n]*\bexec:[^\n]*\b(?:sh|bash)\b|\bpty\.spawn\(\s*["'][^"']*sh["']/i,
+    // Shell I/O wired to a socket, not just a socket: `echo > /dev/tcp/db/5432` is a port check, a bare pty.spawn a local shell.
+    pattern: /\b(?:ba|z|da)?sh\s+-i\b[^\n]*\/dev\/(?:tcp|udp)\/|\/dev\/(?:tcp|udp)\/[\w.$-]+\/\d+[^\n]*\b0>&1|\b(?:nc|ncat|netcat)\b[^\n]*\s(?:-e|-c|--exec|--sh-exec)\s+\S*(?:sh|cmd(?:\.exe)?)\b|\bsocat\b[^\n]*\bexec:[^\n]*\b(?:sh|bash)\b|\bdup2\([^\n]*(?:\bpty\.spaw[n]\(|\b(?:subprocess\.call|os\.exec\w*)\(\s*\[?\s*["']\/bin\/(?:ba)?sh)/i,
     message: 'Hands a shell to a remote host (reverse shell). Remove it; remote administration belongs in an authenticated, audited channel.',
   },
   {
@@ -59,7 +60,7 @@ export const RULES = [
     name: 'Package install hook reaching out',
     severity: 'high',
     files: /(^|\/)package\.json$/,
-    pattern: /"(?:(?:pre|post)?install|prepar[e])"\s*:\s*"[^"]*(?:\b(?:curl|wget|nc|powershell)\b|https?:\/\/|\bnode\s+-e\b|base64|\beval\b)/i,
+    pattern: /"(?:(?:pre|post)?install|prepar[e])"\s*:\s*"[^"]*(?:\b(?:curl|wget|nc|powershell)\b|https?:\/\/|base64|\beval\b)/i,
     message: 'An install hook fetches or runs code on every machine that installs this package (supply-chain vector). Move it to an explicit script users run themselves.',
   },
   {
@@ -101,7 +102,7 @@ export const RULES = [
     technique: 'T1070',
     name: 'Indicator removal',
     severity: 'high',
-    pattern: /\bhistory\s+-c\b|\bunset\s+HISTFILE\b|\bHISTFILE=\/dev\/null\b|\bHISTSIZE=0\b|\brm\s+(?:-\w+\s+)*\/var\/log\/|(?:^|[;&|]\s*|\s)(?:>|truncate\s+-s\s*0)\s*\/var\/log\/|\bwevtutil(?:\.exe)?\s+cl\b|\bClear-EventLog\b|\bjournalctl\s+--vacuum/i,
+    pattern: /\bhistory\s+-c\b|\bunset\s+HISTFILE\b|\bHISTFILE=\/dev\/null\b|\bHISTSIZE=0\b|\brm\s+(?:-\w+\s+)*\/var\/log\/|(?:^|[;&|]\s*|\s)(?:>|truncate\s+-s\s*0)\s*\/var\/log\/|\bwevtutil(?:\.exe)?\s+cl\b|\bClear-EventLog\b/i,
     message: 'Erases logs or shell history, which hides activity from incident response. Use log rotation and retention settings instead.',
   },
   {
@@ -117,7 +118,8 @@ export const RULES = [
     technique: 'T1098.004',
     name: 'SSH authorized keys',
     severity: 'high',
-    pattern: /(?:>>?|\btee\s+(?:-a\s+)?|\b(?:appendFile|writeFile|appendFileSync|writeFileSync|open|write_text|WriteAllText|AppendAllText)\b[^\n]*)[^\n]*authorized[_]keys/i,
+    // Writes only: shell redirection or tee to a path, write APIs, open() in a write mode. Reads and comparisons are fine.
+    pattern: /(?:>>?|\btee\s+(?:-a\s+)?)\s*["']?(?:~|\$HOME|\$\{HOME\}|\/)[^\s"']*authorized[_]keys|\b(?:appendFile|writeFile|appendFileSync|writeFileSync|WriteAllText|AppendAllText)\b[^\n]*authorized[_]keys|authorized[_]keys[^\n]*\.(?:write_text|write)\(|\bopen\([^\n]*authorized[_]keys[^\n]*,\s*["'][^"']*[aw+]/i,
     message: 'Writes an SSH key into authorized_keys, granting lasting login access. Provision keys through your access-management system.',
   },
   {
@@ -252,10 +254,18 @@ export function scan(file, text) {
   return findings;
 }
 
+/** Text of a file, or null for binaries and anything over MAX_BYTES (checked before reading, and bounded). */
 function readText(path) {
-  const buf = readFileSync(path);
-  if (buf.length > MAX_BYTES || buf.subarray(0, 8000).includes(0)) return null;
-  return buf.toString('utf8');
+  if (statSync(path).size > MAX_BYTES) return null;
+  const fd = openSync(path, 'r');
+  try {
+    const buf = Buffer.alloc(MAX_BYTES + 1);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    if (n > MAX_BYTES || buf.subarray(0, Math.min(n, 8000)).includes(0)) return null;
+    return buf.toString('utf8', 0, n);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 async function analyze({ root, files }) {
@@ -269,7 +279,7 @@ async function analyze({ root, files }) {
       continue; // deleted or unreadable
     }
     if (text === null) skipped.push(f);
-    else findings.push(...scan(f, text));
+    else for (const x of scan(f, text)) findings.push(x); // a loop: push(...) has an argument limit
   }
   return { findings, notes: skipped.length ? [`mitre-attack: skipped ${skipped.length} binary or >1 MB file(s)`] : [] };
 }

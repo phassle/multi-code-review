@@ -19,7 +19,7 @@ describe('compose.yaml', () => {
     }
   });
 
-  it('prefixes every container with the project name, so stacks never clash', () => {
+  it('prefixes every container with multi-code-review-, to tell it apart from other stacks', () => {
     for (const [name, svc] of Object.entries(compose.services)) expect(svc.container_name, name).toBe(`multi-code-review-${name}`);
   });
 });
