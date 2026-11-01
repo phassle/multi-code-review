@@ -97,6 +97,11 @@ export function toolOf(analyzer: string): string {
   return category ? analyzer.slice(category.length + 1) : analyzer;
 }
 
+/** Intent checks rest on text the change's author wrote (a PR description can come from anyone): they inform, never block. */
+export function neverBlocks(f: { analyzer: string; ruleId: string }): boolean {
+  return toolOf(f.analyzer) === 'llm' && f.ruleId.startsWith('intent-');
+}
+
 /**
  * Line numbers move as code is edited; the rule, the file and the flagged code
  * do not. This is what an accepted exception will match on.

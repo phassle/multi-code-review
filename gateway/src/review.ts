@@ -11,8 +11,9 @@ import { pool } from './jev.ts';
 import { blocks, defaultLevels, levelsLine, parseSettings, runs, shown, SETTINGS_FILE, type Levels } from './settings.ts';
 import { detect, missingProfiles } from './detect.ts';
 import { applyDecisions, DECISIONS_FILE, parseDecisions, type Decision } from './decisions.ts';
-import { CATEGORIES, classify, dedupe, fromSarif, sortFindings, toolOf, uniqueIds, type Category, type Finding } from './findings.ts';
-import { changes, cloudTemplates, everything, resolveRepo, type Change } from './git.ts';
+import { CATEGORIES, classify, dedupe, fromSarif, neverBlocks, sortFindings, toolOf, uniqueIds, type Category, type Finding } from './findings.ts';
+import { changes, cloudTemplates, commitMessages, everything, resolveRepo, type Change } from './git.ts';
+import { intentOf, type Intent } from './intent.ts';
 
 export type Scope = 'diff' | 'all';
 
@@ -32,6 +33,8 @@ export interface ReviewOptions {
   /** Levels for repos without .mcr/settings.yml (MCR_LEVELS). */
   defaultLevels?: Levels;
   today: string;
+  /** What the change is meant to do (task, PR description, ticket); else the commit messages are used. Model reviewers only. */
+  intent?: string;
 }
 
 export interface AnalyzerRun {
@@ -63,6 +66,8 @@ export interface Review {
   decisions: Decision[];
   /** Decision ids that matched a finding in this review, including pre-existing ones. */
   decisionsUsed: string[];
+  /** Where the intent the model reviewers got came from; absent when there was none. */
+  intent?: { source: Intent['source']; chars: number };
   /** trivial diffs skip the LLM reviewers; set by the judge model or by size and paths. */
   tier: Tier;
   /** How hard each category was reviewed (.mcr/settings.yml). */
@@ -188,6 +193,7 @@ export async function runReview(registry: Analyzer[], mcrRoot: string, opts: Rev
   } catch {
     settingsText = undefined;
   }
+  const intent = intentOf(opts.intent, scope === 'diff' ? await commitMessages(repoRoot, change.mergeBase) : []);
   const settings = parseSettings(settingsText, opts.defaultLevels ?? defaultLevels().levels);
   const levels = settings.levels;
   notes.push(...settings.notes);
@@ -212,14 +218,14 @@ export async function runReview(registry: Analyzer[], mcrRoot: string, opts: Rev
       }
       try {
         const changes = Object.fromEntries(files.map((f) => [f, change.lines.get(f) ?? 'all']));
-        const sarif = await analyze(a, repoRoot, files, changes);
+        const sarif = await analyze(a, repoRoot, files, changes, model ? intent : undefined);
         files.forEach((f) => analyzed.add(f));
         const parsed = fromSarif(a.name, sarif as Parameters<typeof fromSarif>[1]);
         notes.push(...parsed.notes);
         const findings = parsed.findings
           .filter((f) => change.lines.has(f.file)) // project-wide tools (tsc) report outside the diff
           .map((f) => classify(f, change.lines.get(f.file), readLine(f.file, f.line)))
-          .map((f) => ({ ...f, blocking: f.isNew && blocks(levels[f.category], f.severity) }));
+          .map((f) => ({ ...f, blocking: f.isNew && blocks(levels[f.category], f.severity) && !neverBlocks(f) }));
         return { run: { name: a.name, category, files: files.length, findings: findings.length, durationMs: Date.now() - started }, findings };
       } catch (e) {
         return { run: { name: a.name, category, files: files.length, findings: 0, durationMs: Date.now() - started, error: (e as Error).message }, findings: [] };
@@ -285,6 +291,7 @@ export async function runReview(registry: Analyzer[], mcrRoot: string, opts: Rev
     suppressed: applied.suppressed,
     decisions: loaded.decisions,
     decisionsUsed: [...applied.used].sort(),
+    ...(intent ? { intent: { source: intent.source, chars: intent.text.length } } : {}),
     tier,
     levels,
     belowLevel,

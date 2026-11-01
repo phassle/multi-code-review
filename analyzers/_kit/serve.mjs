@@ -1,7 +1,7 @@
 // The analyzer contract, shared by every analyzer image. Zero dependencies.
 //
 //   GET  /info     -> { name, version, languages, categories, extensions }
-//   POST /analyze  { root, files, changes? } -> SARIF 2.1.0 log
+//   POST /analyze  { root, files, changes?, intent?, intentSource? } -> SARIF 2.1.0 log
 //
 // `root` is an absolute path inside MCR_ROOT (mounted read-only at the same
 // path as on the host); `files` are paths relative to it; `changes` maps a file
@@ -80,7 +80,10 @@ export function checkRequest(body, mcrRoot) {
       if (c === 'all' || (Array.isArray(c) && c.every((r) => Array.isArray(r) && r.length === 2 && r.every(Number.isInteger)))) changes[f] = c;
     }
   }
-  return { root, files, changes };
+  // What the change is meant to do (model reviewers only). Data from the PR author: capped, never instructions.
+  const intent = typeof body.intent === 'string' && body.intent.trim() ? body.intent.slice(0, 8000) : undefined;
+  const intentSource = body.intentSource === 'caller' || body.intentSource === 'commits' ? body.intentSource : undefined;
+  return { root, files, changes, ...(intent ? { intent, intentSource } : {}) };
 }
 
 /**

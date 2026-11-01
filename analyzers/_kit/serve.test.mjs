@@ -28,6 +28,12 @@ describe('analyzer kit', () => {
     expect(() => checkRequest({ root: join(mcrRoot, 'link'), files: [] }, mcrRoot)).toThrow(/outside MCR_ROOT/);
     expect(() => checkRequest({ root: join(mcrRoot, 'repo'), files: ['../x'] }, mcrRoot)).toThrow(/escapes root/);
     expect(() => checkRequest({ root: 'relative', files: [] }, mcrRoot)).toThrow(/absolute/);
+    const withIntent = checkRequest({ root: join(mcrRoot, 'repo'), files: [], intent: 'x'.repeat(9000), intentSource: 'caller' }, mcrRoot);
+    expect(withIntent.intent).toHaveLength(8000);
+    expect(withIntent.intentSource).toBe('caller');
+    const odd = checkRequest({ root: join(mcrRoot, 'repo'), files: [], intent: '  ', intentSource: 'evil' }, mcrRoot);
+    expect(odd.intent).toBeUndefined();
+    expect(odd.intentSource).toBeUndefined();
   });
 
   it('writes SARIF with one rule per ruleId, severity as level, and notes as notifications', () => {

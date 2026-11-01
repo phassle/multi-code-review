@@ -78,12 +78,13 @@ const reviewInput = {
   scope: z.enum(['diff', 'all']).optional().describe('diff (default): what changed since the merge base. all: every file in the repo, for a baseline triage.'),
   categories: z.array(z.enum(CATEGORIES)).optional().describe('Only report these categories.'),
   include_preexisting: z.boolean().optional().describe('Also list findings on unchanged lines of changed files. They never block. Default false.'),
+  intent: z.string().max(20_000).optional().describe("What the change is meant to do, in the author's words: the user's task, the PR description or the ticket. The LLM reviewers check the change against it (missing parts, contrary behavior). Default: the branch's commit messages."),
 };
 
-type ReviewArgs = { path: string; base?: string; scope?: 'diff' | 'all'; categories?: Array<(typeof CATEGORIES)[number]>; include_preexisting?: boolean };
+type ReviewArgs = { path: string; base?: string; scope?: 'diff' | 'all'; categories?: Array<(typeof CATEGORIES)[number]>; include_preexisting?: boolean; intent?: string };
 
 function options(a: ReviewArgs, analyzers?: string[]): ReviewOptions {
-  return { path: a.path, base: a.base, scope: a.scope, categories: a.categories, includePreexisting: a.include_preexisting, analyzers, profiles: PROFILES, judge: JUDGE, defaultLevels: process.env.MCR_LEVELS ? LEVELS.levels : undefined, today: today() };
+  return { path: a.path, base: a.base, scope: a.scope, categories: a.categories, includePreexisting: a.include_preexisting, intent: a.intent, analyzers, profiles: PROFILES, judge: JUDGE, defaultLevels: process.env.MCR_LEVELS ? LEVELS.levels : undefined, today: today() };
 }
 
 /** A cached review by id, or a fresh one from the review arguments. */

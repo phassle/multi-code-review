@@ -2,6 +2,7 @@
 // Each analyzer answers GET /info and POST /analyze (see analyzers/_kit/serve.mjs).
 
 import { extname, basename } from 'node:path';
+import type { Intent } from './intent.ts';
 
 export interface AnalyzerInfo {
   /** <category>-<tool>, e.g. security-semgrep. */
@@ -54,11 +55,12 @@ export async function infoOf(a: Analyzer): Promise<AnalyzerInfo | { name: string
 /** Changed line ranges per file, for analyzers that review the diff itself (llm). */
 export type ChangedRanges = Record<string, Array<[number, number]> | 'all'>;
 
-export async function analyze(a: Analyzer, root: string, files: string[], changes?: ChangedRanges): Promise<unknown> {
+/** `intent` goes to model reviewers only: what the change is meant to do. */
+export async function analyze(a: Analyzer, root: string, files: string[], changes?: ChangedRanges, intent?: Intent): Promise<unknown> {
   const res = await fetch(`${a.url}/analyze`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ root, files, ...(changes ? { changes } : {}) }),
+    body: JSON.stringify({ root, files, ...(changes ? { changes } : {}), ...(intent ? { intent: intent.text, intentSource: intent.source } : {}) }),
     signal: AbortSignal.timeout(ANALYZE_TIMEOUT_MS),
   });
   const text = await res.text();

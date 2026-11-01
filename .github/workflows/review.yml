@@ -134,6 +134,8 @@ jobs:
         run: |
           # The lines a review comment may sit on, and findings already commented on an earlier push.
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[]' | jq -s . > "$RUNNER_TEMP/pr-files.json"
+          # What the PR says it does: the LLM reviewers check the change against it.
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '"\(.title)\n\n\(.body // "")"' > "$RUNNER_TEMP/intent.md"
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/comments" --paginate --jq '.[].body' \
             | grep -o '<!-- mcr:[0-9a-f]* -->' | sed 's/<!-- mcr:\(.*\) -->/\1/' | jq -R . | jq -s . > "$RUNNER_TEMP/skip.json" || echo '[]' > "$RUNNER_TEMP/skip.json"
 
@@ -148,6 +150,9 @@ jobs:
           pr=()
           if [ -f "$RUNNER_TEMP/pr-files.json" ]; then
             pr=(--github-review "$RUNNER_TEMP/github-review.json" --commit "$HEAD_SHA" --pr-files "$RUNNER_TEMP/pr-files.json" --skip "$RUNNER_TEMP/skip.json" --report-url "$RUN_URL")
+          fi
+          if [ -s "$RUNNER_TEMP/intent.md" ]; then
+            pr+=(--intent-file "$RUNNER_TEMP/intent.md")
           fi
           set +e
           node "$TOOL/scripts/mcr.mjs" review "$MCR_ROOT" ${BASE:+--base "$BASE"} ${STRICT:+"$STRICT"} --json --out "$RUNNER_TEMP/review.md" "${pr[@]}" > "$RUNNER_TEMP/review.json"
