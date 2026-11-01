@@ -11,3 +11,9 @@ review:
   testing: medium
   correctness: medium
   reliability: medium
+
+# Claude Code (with this repo as a plugin): an agent may not finish its turn
+# while the review blocks; its Stop hook sends the blocking findings back.
+# Fails open when the gateway is down, hands over to you after 3 rounds.
+agent:
+  gate: true
