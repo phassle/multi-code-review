@@ -24,6 +24,7 @@ function entries(tool: string, profile: Profile, categories: Category[]): Catalo
 export const CATALOG: CatalogEntry[] = [
   ...entries('semgrep', 'core', ['security', 'best-practices', 'correctness', 'reliability']),
   ...entries('gitleaks', 'core', ['security']),
+  ...entries('mitre-attack', 'core', ['security']),
   ...entries('eslint', 'node', ['security', 'architecture', 'best-practices', 'testing', 'correctness', 'reliability']),
   ...entries('tsc', 'node', ['correctness']),
   ...entries('pmd', 'jvm', ['security', 'architecture', 'best-practices', 'correctness', 'reliability']),
@@ -42,7 +43,7 @@ export const CATALOG: CatalogEntry[] = [
 ];
 
 /** Tools that read any language: they cover every stack. */
-export const UNIVERSAL_TOOLS = new Set(['llm', 'gitleaks']);
+export const UNIVERSAL_TOOLS = new Set(['llm', 'gitleaks', 'mitre-attack']);
 
 /** Model reviewers: skipped at level minimum and on trivial diffs (settings.ts `runs`). Deterministic tools always run. */
 export const MODEL_TOOLS = new Set(['llm']);

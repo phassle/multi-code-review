@@ -81,7 +81,7 @@ flowchart TB
         gw["🚪 review-mcp gateway<br/>diff · routing · levels · decisions"]
         repo[("📁 Code under MCR_ROOT, read-only<br/>.mcr/settings.yml · .mcr/decisions.yml")]
         subgraph net["🔒 no internet"]
-            an["🔍 Analyzers, one container per category<br/>semgrep · gitleaks · eslint · tsc · roslyn · pmd · ruff · hadolint …"]
+            an["🔍 Analyzers, one container per category<br/>semgrep · gitleaks · mitre-attack · eslint · tsc · roslyn · pmd · ruff · hadolint …"]
         end
         llm["🧠 LLM reviewers (optional)"]
     end
@@ -123,7 +123,7 @@ flowchart TB
 
 | Language | Analyzers (each runs as one container per category) |
 |---|---|
-| All languages | semgrep (rules for most languages), gitleaks (secrets), plus the optional LLM reviewer |
+| All languages | semgrep (rules for most languages), gitleaks (secrets), MITRE ATT&CK rules (backdoors, persistence, exfiltration), plus the optional LLM reviewer |
 | JavaScript / TypeScript | the repo's own ESLint and TypeScript (`tsc`) |
 | Java / Kotlin | PMD, detekt; Spring (code and `application*.properties`/`.yml`) through our own semgrep rules |
 | C# / VB.NET | Roslyn analyzers (a real build, offline); SARIF from CI |
@@ -366,7 +366,7 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 
 | Profile | Starts when | Containers |
 |---|---|---|
-| core | always | `{security,best-practices,correctness,reliability}-semgrep`, `security-gitleaks` (secrets in the files under review, redacted; repo `.gitleaks.toml` if any) |
+| core | always | `{security,best-practices,correctness,reliability}-semgrep`, `security-gitleaks` (secrets in the files under review, redacted; repo `.gitleaks.toml` if any), `security-mitre-attack` (MITRE ATT&CK techniques, see below) |
 | node | JS/TS found | `*-eslint` (all six), `correctness-tsc`, from the repo's own `node_modules` |
 | jvm | Java/Kotlin found | `*-pmd` (Java, repo ruleset if any), `*-detekt` (Kotlin, `.kt`/`.kts`, repo `detekt.yml` if any) |
 | dotnet | C#/VB.NET found | `*-roslyn`: `dotnet build --no-restore` into `/tmp`, from the host's `obj/project.assets.json` and NuGet cache (mounted read-only); also `.mcr/sarif/**/*.sarif` |
@@ -385,6 +385,17 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
   protection go to reliability (medium), Multi-AZ and replication low.
   Terraform is scanned per module directory, templates per file; JSON and YAML
   count only when they look like CloudFormation, SAM, Serverless or ARM.
+- **mitre-attack:** code that carries out a [MITRE ATT&CK](https://attack.mitre.org/)
+  technique, as opposed to a vulnerability: reverse shells, piped or encoded
+  installers, decoded-payload `eval`, web shells, install hooks in
+  `package.json` that reach out (T1195.002), log and history wiping, disabled
+  defenses, SSH key, cron, systemd, shell-profile and Run-key persistence,
+  credential-store reads, environment dumps, miners and exfiltration endpoints.
+  One container (all of it is security), plain JavaScript line rules with no
+  tool binary. Rule ids are `<technique>-<slug>` (`mitre-attack:T1070-clear-traces`)
+  and link to the technique. High only where a pattern has almost no honest
+  use; the rest is medium. Test and fixture paths drop one step, Markdown and
+  text are skipped.
 - Each tool maps its own rule groups onto the six categories (e.g. Roslyn
   `Security`/`Reliability`/`Design`, RuboCop `Lint`/`Security`, detekt
   `potential-bugs`/`coroutines`). The repo's own linter config is the norm
@@ -480,7 +491,7 @@ design notes are in [docs/research/multi-language.md](docs/research/multi-langua
    decisions.
 5. Jev as a first pass over every hunk (checklist questions per category),
    with the LLM only on what it flags (research §11).
-6. More containers: ✅ `security-gitleaks`, ✅ `best-practices-hadolint`,
+6. More containers: ✅ `security-gitleaks`, ✅ `security-mitre-attack`, ✅ `best-practices-hadolint`,
    ✅ `{security,reliability}-checkov`;
    next `security-osv`, `security-zizmor`, architecture tools
    (dependency-cruiser, ArchUnit, NetArchTest, packwerk) and diff coverage for

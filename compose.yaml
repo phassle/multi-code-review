@@ -37,6 +37,11 @@ x-gitleaks: &gitleaks
   build: { context: analyzers, dockerfile: gitleaks/Dockerfile }
   image: multi-code-review/gitleaks:dev
 
+x-mitre-attack: &mitre-attack
+  <<: *analyzer
+  build: { context: analyzers, dockerfile: mitre-attack/Dockerfile }
+  image: multi-code-review/mitre-attack:dev
+
 x-hadolint: &hadolint
   <<: *analyzer
   profiles: [infra]
@@ -192,6 +197,10 @@ services:
   security-gitleaks:
     <<: *gitleaks
     container_name: security-gitleaks
+    environment: { <<: *env, MCR_CATEGORY: security }
+  security-mitre-attack:
+    <<: *mitre-attack
+    container_name: security-mitre-attack
     environment: { <<: *env, MCR_CATEGORY: security }
   security-eslint:
     <<: *node
