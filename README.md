@@ -9,9 +9,11 @@ decided about its findings.
 > illustrate an idea: pull request review can be built mainly from fast,
 > deterministic analyzers, with a language model added where judgment is
 > needed (for example checking a change against the team's ADRs), and Jev
-> deciding whether each finding is real. It is not a product, not supported,
-> and comes without a license, so all rights are reserved. You are welcome
-> to read it and learn from it.
+> deciding whether each finding is real. It shows what can be done; it is
+> not a product. Take it, use it, change it and build on it under the
+> [MIT License](LICENSE). It comes **as is**: no support, no warranty, and no
+> responsibility for what it finds or misses. Use it as a starting point and
+> check it fits your own needs before you rely on it.
 >
 > **Third-party rules.** This repository contains no Semgrep-maintained rules.
 > The semgrep image fetches them from
@@ -20,8 +22,9 @@ decided about its findings.
 > [Semgrep Rules License v1.0](https://semgrep.dev/legal/rules-license), which
 > allows internal business use only. Build the image locally, and do not push
 > it to a registry, share it, or run it as a service for others. Each analyzer
-> image (semgrep engine, PMD, Ruff, gitleaks, checkov and others) keeps its
-> own license.
+> image (semgrep engine, PMD, Ruff, gitleaks, osv-scanner, zizmor, checkov and
+> others) keeps its own license; the MIT License covers this repository's own
+> code only.
 
 ---
 

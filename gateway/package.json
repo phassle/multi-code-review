@@ -18,6 +18,7 @@
     "typescript": "5.9",
     "vitest": "^4.1.11"
   },
+  "license": "MIT",
   "private": true,
   "engines": {
     "node": ">=24"
