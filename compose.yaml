@@ -73,6 +73,30 @@ x-checkov: &checkov
   build: { context: analyzers, dockerfile: checkov/Dockerfile }
   image: multi-code-review/checkov:dev
 
+x-actionlint: &actionlint
+  <<: *analyzer
+  profiles: [infra]
+  build: { context: analyzers, dockerfile: actionlint/Dockerfile }
+  image: multi-code-review/actionlint:dev
+
+x-depcruise: &depcruise
+  <<: *analyzer
+  profiles: [node]
+  build: { context: analyzers, dockerfile: depcruise/Dockerfile }
+  image: multi-code-review/depcruise:dev
+
+x-packwerk: &packwerk
+  <<: *analyzer
+  profiles: [ruby]
+  build: { context: analyzers, dockerfile: packwerk/Dockerfile }
+  image: multi-code-review/packwerk:dev
+
+# Reads the results of the repo's own architecture tests; never runs them.
+x-archtests: &archtests
+  <<: *analyzer
+  build: { context: analyzers, dockerfile: archtests/Dockerfile }
+  image: multi-code-review/archtests:dev
+
 x-node: &node
   <<: *analyzer
   profiles: [node]
@@ -345,6 +369,32 @@ services:
     <<: *detekt
     container_name: multi-code-review-reliability-detekt
     environment: { <<: *env, MCR_CATEGORY: reliability }
+
+  # architecture boundaries: import rules (node), packs (ruby), the repo's own ArchUnit / NetArchTest results
+  architecture-depcruise:
+    <<: *depcruise
+    container_name: multi-code-review-architecture-depcruise
+    environment: { <<: *env, MCR_CATEGORY: architecture }
+  architecture-packwerk:
+    <<: *packwerk
+    container_name: multi-code-review-architecture-packwerk
+    environment: { <<: *env, MCR_CATEGORY: architecture }
+  architecture-archunit:
+    <<: *archtests
+    profiles: [jvm]
+    container_name: multi-code-review-architecture-archunit
+    environment: { <<: *env, MCR_CATEGORY: architecture, MCR_TOOLS: archunit }
+  architecture-netarchtest:
+    <<: *archtests
+    profiles: [dotnet]
+    container_name: multi-code-review-architecture-netarchtest
+    environment: { <<: *env, MCR_CATEGORY: architecture, MCR_TOOLS: netarchtest }
+
+  # infra: GitHub Actions workflow syntax, expressions and run: scripts (zizmor has the security audits)
+  correctness-actionlint:
+    <<: *actionlint
+    container_name: multi-code-review-correctness-actionlint
+    environment: { <<: *env, MCR_CATEGORY: correctness }
 
   # infra: cloud IaC (Terraform, Bicep/ARM, CloudFormation/SAM, Serverless) for AWS, Azure, GCP
   security-checkov:

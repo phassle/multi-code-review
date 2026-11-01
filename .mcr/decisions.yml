@@ -1,4 +1,10 @@
 # multi-code-review decisions. Reviewed like code; matched on every review.
+#
+# These are the decisions for reviewing multi-code-review's own code (self-review.yml,
+# `mcr review .`). They do not apply to repos you review with it: the gateway reads
+# .mcr/decisions.yml from the repo under review, and yours starts empty
+# (record_decisions or triage_queue writes it). Kept here as a working example.
+#
 # action: fix (keep on the to-fix list) | accept (norm broken on purpose: inform, never block)
 #         false-positive (the tool is wrong here) | disable (this rule does not apply: hide it)
 # match:  rule (analyzer:ruleId), plus fingerprint (one occurrence) or paths (globs).
@@ -185,3 +191,22 @@ decisions:
     reason: Test targets for our own semgrep rules (semgrep --test), vulnerable on purpose; not shipped, only the rule YAML is.
     ref: https://github.com/phassle/multi-code-review/pull/10
     decided_on: 2026-10-14
+  - id: D-0021
+    action: false-positive
+    match:
+      rule: semgrep:javascript.lang.security.audit.detect-non-literal-regexp
+      paths:
+        - analyzers/osv/adapter.mjs
+    reason: Package names and versions are regex-escaped before they enter the pattern, and the patterns have no nested quantifiers, so there is no ReDoS.
+    decided_by: Per Hassle
+    decided_on: 2026-11-01
+  - id: D-0022
+    action: false-positive
+    match:
+      rule: semgrep:javascript.lang.security.html-in-template-string
+      paths:
+        - analyzers/**/*.test.mjs
+    reason: Adapter tests build JUnit XML, TRX and coverage report fixtures with template strings; they are written to temp files and parsed, never rendered in a browser.
+    ref: https://github.com/phassle/multi-code-review/pull/4
+    decided_by: Per Hassle
+    decided_on: 2026-11-01

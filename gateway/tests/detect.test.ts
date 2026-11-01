@@ -50,7 +50,7 @@ describe('stack detection', () => {
     const kt = kotlin.stacks[0]!;
     expect(kt.coverage.correctness).toEqual(['correctness-semgrep', 'correctness-detekt']);
     expect(kt.coverage.security).toEqual(['security-semgrep', 'security-gitleaks', 'security-mitre-attack', 'security-osv']);
-    expect(kt.coverage.architecture).toEqual([]);
+    expect(kt.coverage.architecture).toEqual(['architecture-archunit']); // reads the repo's own ArchUnit results
     const java = detect(['pom.xml', ...many('src', '.java', 5)]).stacks[0]!;
     expect(java.coverage.reliability).toEqual(['reliability-semgrep', 'reliability-pmd']);
     const mixed = detect(['build.gradle.kts', ...many('src', '.java', 3), ...many('src', '.kt', 3)]).stacks[0]!;

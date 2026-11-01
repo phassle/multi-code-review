@@ -22,8 +22,8 @@ decided about its findings.
 > [Semgrep Rules License v1.0](https://semgrep.dev/legal/rules-license), which
 > allows internal business use only. Build the image locally, and do not push
 > it to a registry, share it, or run it as a service for others. Each analyzer
-> image (semgrep engine, PMD, Ruff, gitleaks, osv-scanner, zizmor, checkov and
-> others) keeps its own license; the MIT License covers this repository's own
+> image (semgrep engine, PMD, Ruff, gitleaks, osv-scanner, zizmor, actionlint,
+> dependency-cruiser, pks, checkov and others) keeps its own license; the MIT License covers this repository's own
 > code only.
 
 ---
@@ -116,7 +116,7 @@ flowchart TB
         gw["🚪 review-mcp gateway<br/>diff · routing · levels · decisions"]
         repo[("📁 Code under MCR_ROOT, read-only<br/>.mcr/settings.yml · .mcr/decisions.yml")]
         subgraph net["🔒 no internet"]
-            an["🔍 Analyzers, one container per category<br/>semgrep · gitleaks · osv · mitre-attack · coverage · eslint · tsc · roslyn · pmd · ruff · hadolint …"]
+            an["🔍 Analyzers, one container per category<br/>semgrep · gitleaks · osv · mitre-attack · coverage · eslint · tsc · depcruise · roslyn · pmd · archunit · ruff · hadolint · actionlint …"]
         end
         llm["🧠 LLM reviewers (optional)"]
     end
@@ -159,16 +159,16 @@ flowchart TB
 | Language | Analyzers (each runs as one container per category) |
 |---|---|
 | All languages | semgrep (rules for most languages), gitleaks (secrets), osv (vulnerable and known-malicious dependencies, from lockfiles), MITRE ATT&CK rules (backdoors, persistence, exfiltration), diff coverage (changed lines no test runs, from your own coverage report), plus the optional LLM reviewer |
-| JavaScript / TypeScript | the repo's own ESLint and TypeScript (`tsc`) |
-| Java / Kotlin | PMD, detekt; Spring (code and `application*.properties`/`.yml`) through our own semgrep rules |
-| C# / VB.NET | Roslyn analyzers (a real build, offline); SARIF from CI |
+| JavaScript / TypeScript | the repo's own ESLint and TypeScript (`tsc`); dependency-cruiser (cycles, unresolvable and undeclared imports, or the repo's own import rules) |
+| Java / Kotlin | PMD, detekt; Spring (code and `application*.properties`/`.yml`) through our own semgrep rules; failed ArchUnit tests, from the repo's own test results |
+| C# / VB.NET | Roslyn analyzers (a real build, offline); SARIF from CI; failed NetArchTest / ArchUnitNET tests, from the repo's own TRX results |
 | PHP | PHPStan |
 | C / C++ | cppcheck |
 | Python | Ruff, Bandit |
-| Ruby | RuboCop, Brakeman |
+| Ruby | RuboCop, Brakeman; packwerk boundaries (`pks check`) where there is a `packwerk.yml` |
 | Go | golangci-lint (incl. gosec) |
 | Dockerfiles | hadolint (with ShellCheck on `RUN`) |
-| GitHub Actions | zizmor (template injection, permissions, unpinned actions, `pull_request_target`) |
+| GitHub Actions | zizmor (template injection, permissions, unpinned actions, `pull_request_target`); actionlint (syntax, expressions, ShellCheck on `run:`) |
 | Cloud IaC: AWS, Azure, GCP | checkov, offline (Terraform, Bicep/ARM, CloudFormation/SAM, Serverless) |
 | Scala, Rust, Swift | semgrep only (plus the all-language rows); `detect_stack` names the analyzer that would come next |
 
@@ -296,6 +296,12 @@ review:
 the file. See `examples/settings.yml`.
 
 ### Decisions (`.mcr/decisions.yml`)
+
+Each reviewed repo keeps its own file; the gateway reads it from the repo under
+review, never from this one. The [`.mcr/decisions.yml`](.mcr/decisions.yml) here
+holds this repo's own decisions (its self-review), and doubles as a real
+example. Your repo starts without one; `record_decisions` (or `triage_queue`)
+writes it.
 
 ```yaml
 decisions:
@@ -445,15 +451,15 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 | Profile | Starts when | Containers |
 |---|---|---|
 | core | always | `{security,best-practices,correctness,reliability}-semgrep`, `security-gitleaks` (secrets in the files under review, redacted; repo `.gitleaks.toml` if any), `security-osv` (changed lockfiles, offline vulnerability database), `security-mitre-attack` (MITRE ATT&CK techniques), `testing-coverage` (diff coverage); all three below |
-| node | JS/TS found | `*-eslint` (all six), `correctness-tsc`, from the repo's own `node_modules` |
-| jvm | Java/Kotlin found | `*-pmd` (Java, repo ruleset if any), `*-detekt` (Kotlin, `.kt`/`.kts`, repo `detekt.yml` if any) |
-| dotnet | C#/VB.NET found | `*-roslyn`: `dotnet build --no-restore` into `/tmp`, from the host's `obj/project.assets.json` and NuGet cache (mounted read-only); also `.mcr/sarif/**/*.sarif` |
+| node | JS/TS found | `*-eslint` (all six), `correctness-tsc`, from the repo's own `node_modules`; `architecture-depcruise` (repo `.dependency-cruiser.*` if any) |
+| jvm | Java/Kotlin found | `*-pmd` (Java, repo ruleset if any), `*-detekt` (Kotlin, `.kt`/`.kts`, repo `detekt.yml` if any), `architecture-archunit` (JUnit XML the repo's test run wrote) |
+| dotnet | C#/VB.NET found | `*-roslyn`: `dotnet build --no-restore` into `/tmp`, from the host's `obj/project.assets.json` and NuGet cache (mounted read-only); also `.mcr/sarif/**/*.sarif`; `architecture-netarchtest` (TRX the repo's test run wrote) |
 | php | PHP found | `*-phpstan` (repo `phpstan.neon` if any, else level 5) |
 | cpp | C/C++ found | `*-cppcheck` |
 | python | Python found | `*-ruff`, `security-bandit` (Ruff's S rules are left to Bandit) |
-| ruby | Ruby found | `*-rubocop`, `security-brakeman` |
+| ruby | Ruby found | `*-rubocop`, `security-brakeman`, `architecture-packwerk` (only with `packwerk.yml`) |
 | go | Go found | `*-golangci-lint`, from the host's module cache (`go mod download` first) |
-| infra | Dockerfiles, compose, workflows, Terraform, Bicep or cloud templates found | `best-practices-hadolint` (repo `.hadolint.yaml` if any); `security-checkov`, `reliability-checkov` (repo `.checkov.yaml` if any, `checkov:skip=` comments); `security-zizmor` (workflows and `action.yml`, repo `zizmor.yml` if any) |
+| infra | Dockerfiles, compose, workflows, Terraform, Bicep or cloud templates found | `best-practices-hadolint` (repo `.hadolint.yaml` if any); `security-checkov`, `reliability-checkov` (repo `.checkov.yaml` if any, `checkov:skip=` comments); `security-zizmor` (workflows and `action.yml`, repo `zizmor.yml` if any); `correctness-actionlint` (workflows, repo `.github/actionlint.yaml` if any) |
 | llm | `secrets/llm_api_key` | `<category>-llm` for all six |
 
 - checkov has no severity offline, so the adapter grades its checks: data open
@@ -477,6 +483,12 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 - **zizmor:** GitHub Actions security, offline (no online audits). High
   severity blocks only when zizmor's confidence is medium or high.
   `# zizmor: ignore[...]` comments are honoured.
+- **actionlint:** GitHub Actions workflows that break or misbehave: syntax,
+  unknown keys, expression and type errors, `needs`, matrix, events, action
+  inputs, with ShellCheck on `run:` scripts. Those are high; ShellCheck and
+  unknown runner labels medium, ShellCheck style low. What zizmor already
+  reports (untrusted input in `run:`, hard-coded credentials) is dropped.
+  Rule ids are actionlint's kinds, and `shellcheck-SC2086` style for ShellCheck.
 - **coverage:** diff coverage. It never runs tests: it reads the coverage
   report your own test run wrote (lcov, Cobertura including coverage.py and
   coverlet, JaCoCo, Go cover profiles, SimpleCov). It reports each range of
@@ -484,6 +496,29 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
   it would judge, and says so when there is none. Findings are medium: shown
   at the default level, blocking only when `testing` is `maximum`. In CI,
   run the tests with coverage in `prepare`.
+- **depcruise:** dependency-cruiser on the changed JS/TS files and what they
+  import, per `package.json` project. The repo's `.dependency-cruiser.*` is the
+  norm if there is one (a JS config runs in the sandboxed container, as ESLint
+  configs do); otherwise cycles, unresolvable imports and packages missing from
+  `package.json`, all medium. The repo's rule severities map `error` high,
+  `warn` medium, `info` low. Each finding lands on the import line. Without
+  `node_modules`, bare package imports are not judged.
+- **packwerk:** `pks check` (a static Rust port of packwerk, built from the
+  crates.io source; no Rails boot, no repo code runs) for each `packwerk.yml`
+  or `packs.yml` above the changed Ruby files. Dependency, privacy, visibility,
+  layer and folder-privacy violations land on the reference. pks only reports
+  boundaries a pack enforces, and leaves out what `package_todo.yml` already
+  records, so findings are high: `packwerk check` would fail on them too.
+- **archunit, netarchtest:** architecture tests are tests the repo writes and
+  runs itself (ArchUnit; NetArchTest or ArchUnitNET). The container never runs
+  repo code: it reads the results your test run left (JUnit XML in
+  `target/surefire-reports`, `target/failsafe-reports`, `build/test-results`;
+  TRX in `TestResults/`) and puts each violation on the class that broke the
+  rule: ArchUnit's `(File.java:42)`, or the declaration of the type a
+  NetArchTest / ArchUnitNET failure names. Only failing tests that look like
+  architecture tests count. High, since the repo's own test fails (ArchUnit
+  `Priority: LOW` medium). Like coverage, it skips results older than the file
+  and says when there are none; in CI, run the tests in `prepare`.
 - **mitre-attack:** code that carries out a [MITRE ATT&CK](https://attack.mitre.org/)
   technique, as opposed to a vulnerability: reverse shells, piped or encoded
   installers, decoded-payload `eval`, web shells, install hooks that reach out
@@ -597,10 +632,10 @@ they stay offline and fast:
 
 | Container | Profile | How it plugs in |
 |---|---|---|
-| `architecture-depcruise` | node | dependency-cruiser with the repo's `.dependency-cruiser.*`, else a default set (no cycles, no unresolvable or undeclared imports); a violation lands on the import line |
-| `architecture-packwerk` | ruby | `pks check` (static Rust port of packwerk, no Rails boot) on repos with `packwerk.yml` |
-| `architecture-archunit`, `architecture-netarchtest` | jvm, dotnet | These are tests the repo writes and runs itself; the container must not run repo code. It reads their results instead (JUnit XML from `target/surefire-reports`, `build/test-results`, TRX), and turns failed architecture tests into findings on the violating class (ArchUnit prints `(File.java:42)`) |
-| `security-actionlint` | infra | actionlint for workflow syntax and expressions, next to zizmor's security audits |
+| `architecture-import-linter` | python | import-linter contracts from the repo's `.importlinter` / `pyproject.toml`; a broken contract lands on the import line |
+| `architecture-go-arch-lint` | go | go-arch-lint with the repo's `.go-arch-lint.yml`, from the host's module cache |
+| `architecture-deptrac` | php | deptrac with the repo's `deptrac.yaml`; a layer violation lands on the use |
+| `best-practices-knip` | node | unused files, exports and dependencies, from the repo's `node_modules` |
 
 ### Develop
 
@@ -628,8 +663,9 @@ design notes are in [docs/research/multi-language.md](docs/research/multi-langua
    with the LLM only on what it flags (research §11).
 6. More containers: ✅ `security-gitleaks`, ✅ `security-mitre-attack`,
    ✅ `security-osv`, ✅ `security-zizmor`, ✅ `testing-coverage`,
-   ✅ `best-practices-hadolint`, ✅ `{security,reliability}-checkov`; next
-   architecture tools (dependency-cruiser, ArchUnit, NetArchTest, packwerk)
-   (see [Adding an analyzer](#adding-an-analyzer)).
+   ✅ `best-practices-hadolint`, ✅ `{security,reliability}-checkov`,
+   ✅ `correctness-actionlint`, ✅ architecture: `architecture-depcruise`,
+   `-packwerk`, `-archunit`, `-netarchtest`; next import-linter (Python),
+   go-arch-lint, deptrac (PHP) (see [Adding an analyzer](#adding-an-analyzer)).
 7. ✅ Agent gate: a Claude Code Stop hook keeps the agent working while the
    review blocks.
