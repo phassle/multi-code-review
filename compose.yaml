@@ -242,6 +242,9 @@ services:
     environment:
       <<: *env
       MCR_PUBLIC_PORT: ${MCR_PORT:-7700}
+      # A shared server's name behind its proxy (README: Running it for a team). Empty: localhost only.
+      MCR_ALLOWED_HOSTS: ${MCR_ALLOWED_HOSTS:-}
+      MCR_REPORTS_URL: ${MCR_REPORTS_URL:-}
       MCR_REPORT_STORE: http://report-store:8080
       # Empty: the gateway derives the registry from MCR_PROFILES and its catalog.
       MCR_ANALYZERS: ${MCR_ANALYZERS:-}

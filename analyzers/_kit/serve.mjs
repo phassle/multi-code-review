@@ -46,13 +46,16 @@ export function run(cmd, args, { timeoutMs = TOOL_TIMEOUT_MS, ...opts } = {}) {
       clearTimeout(timer);
       done({ code: -1, stdout: '', stderr: String(e) });
     });
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer);
       const stderr = Buffer.concat(err).toString();
       done(
         timedOut
           ? { code: -1, stdout: '', stderr: `${cmd} killed after ${timeoutMs / 1000} s (MCR_TOOL_TIMEOUT_MS)\n${stderr}` }
-          : { code, stdout: Buffer.concat(out).toString(), stderr },
+          : signal
+            ? // Killed from outside: usually the container's memory ceiling (mem_limit). Never a clean, empty result.
+              { code: -1, stdout: '', stderr: `${cmd} was killed (${signal}); out of memory? See mem_limit in compose.yaml\n${stderr}` }
+            : { code, stdout: Buffer.concat(out).toString(), stderr },
       );
     });
   });

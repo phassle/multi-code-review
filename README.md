@@ -406,10 +406,11 @@ cloud VM:
   exactly as on a laptop. Anyone who reaches the gateway can review any path
   under `MCR_ROOT`; give teams their own box or `MCR_ROOT` if that matters.
 - **Review server:** clone the repos under `MCR_ROOT` (e.g. `/srv/mcr/repos`)
-  and fetch them on a timer (cron or a systemd timer, `git fetch --all`). Review
-  a pushed branch with its server path, from a laptop:
-  `node scripts/mcr.mjs review /srv/mcr/repos/acme --base origin/main`
-  (check the branch out in a worktree first). For Go and .NET, run
+  and fetch them on a timer (cron or a systemd timer, `git fetch --all`), and
+  check the branch to review out in a worktree. An assistant connected over MCP
+  passes the server path to `run_review` (`/srv/mcr/repos/acme`). The CLI
+  resolves its path locally, so run it on the server:
+  `ssh mcr-host node multi-code-review/scripts/mcr.mjs review /srv/mcr/repos/acme --base origin/main`. For Go and .NET, run
   `go mod download` / `dotnet restore` in the clones so the host caches are
   filled; the analyzers stay offline.
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eslintCategory, parseTsc } from './adapter.mjs';
+import { eslintCategory, parseTsc, tscFindings } from './adapter.mjs';
 
 describe('ts analyzer', () => {
   it('maps a repo boundary rule to architecture and promise misuse to reliability', () => {
@@ -20,5 +20,12 @@ describe('ts analyzer', () => {
     expect(parseTsc(out)).toEqual([
       expect.objectContaining({ ruleId: 'TS2322', file: 'src/app/(tenant)/page.tsx', line: 12, column: 5, severity: 'high', category: 'correctness' }),
     ]);
+  });
+  it('treats a killed or failed tsc as an error, not as zero findings', () => {
+    expect(tscFindings({ code: 0, stdout: '', stderr: '' })).toEqual([]);
+    const diag = 'src/a.ts(1,5): error TS2322: Type string is not assignable to type number.';
+    expect(tscFindings({ code: 2, stdout: diag, stderr: '' })).toHaveLength(1);
+    expect(() => tscFindings({ code: -1, stdout: '', stderr: 'node was killed (SIGKILL); out of memory?' })).toThrow(/did not finish.*SIGKILL/);
+    expect(() => tscFindings({ code: 1, stdout: '', stderr: 'error TS5058: The specified path does not exist' })).toThrow(/did not finish/);
   });
 });

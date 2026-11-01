@@ -99,7 +99,14 @@ async function tsc(root, notes) {
   }
   // The repo is mounted read-only: never emit, and keep any build info in /tmp.
   const result = await run('node', [bin, '--noEmit', '--pretty', 'false', '--tsBuildInfoFile', '/tmp/mcr.tsbuildinfo', '-p', root], { cwd: root });
-  return parseTsc(result.stdout);
+  return tscFindings(result);
+}
+
+/** tsc exits 0 (clean) or 1/2 (diagnostics). Anything else, or a failure that printed no diagnostics, means it did not finish: an error, not zero findings. */
+export function tscFindings({ code, stdout, stderr }) {
+  const findings = parseTsc(stdout);
+  if (code === 0 || ((code === 1 || code === 2) && findings.length > 0)) return findings;
+  throw new Error(`tsc did not finish (exit ${code}): ${(stderr || stdout).trim().slice(0, 300) || 'no output'}`);
 }
 
 async function analyze({ root, files }) {
