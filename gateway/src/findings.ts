@@ -2,6 +2,7 @@
 // fingerprint and a block/inform decision. Pure.
 
 import { createHash } from 'node:crypto';
+import { MODEL_TOOLS } from './catalog.ts';
 import type { AppliedDecision } from './decisions.ts';
 import type { Assessment } from './judge.ts';
 import { touchesChange } from './diff.ts';
@@ -97,9 +98,9 @@ export function toolOf(analyzer: string): string {
   return category ? analyzer.slice(category.length + 1) : analyzer;
 }
 
-/** Intent checks rest on text the change's author wrote (a PR description can come from anyone): they inform, never block. */
-export function neverBlocks(f: { analyzer: string; ruleId: string }): boolean {
-  return toolOf(f.analyzer) === 'llm' && f.ruleId.startsWith('intent-');
+/** Models may take blocking away, never add it: their findings inform, never block. */
+export function neverBlocks(f: { analyzer: string }): boolean {
+  return MODEL_TOOLS.has(toolOf(f.analyzer));
 }
 
 /**
