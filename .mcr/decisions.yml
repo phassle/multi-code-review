@@ -210,3 +210,19 @@ decisions:
     ref: https://github.com/phassle/multi-code-review/pull/4
     decided_by: Per Hassle
     decided_on: 2026-11-01
+  - id: D-0023
+    action: false-positive
+    match:
+      rule: depcruise:not-to-unresolvable
+      paths:
+        - analyzers/**/*.test.mjs
+    reason: Adapter tests import vitest, which the gateway's vitest run resolves (gateway/vitest.config, root '..'); analyzers/ has no package.json of its own by design, since adapters are zero-dependency.
+    decided_by: Per Hassle
+    decided_on: 2026-11-01
+  - id: D-0024
+    action: disable
+    match:
+      rule: semgrep:javascript.lang.correctness.no-replaceall
+    reason: String.prototype.replaceAll is in every Node this repo runs on (Node 24 everywhere); the rule targets old runtimes.
+    decided_by: Per Hassle
+    decided_on: 2026-11-01
