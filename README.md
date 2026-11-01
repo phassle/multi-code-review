@@ -188,11 +188,20 @@ node scripts/status.mjs      # MCP URL, tools, dashboard link
 Or without Aspire:
 
 ```bash
-./setup.sh                   # scan all of MCR_ROOT, start what it needs
-./setup.sh ~/Source/acme     # scan just these repos
+./setup.sh                   # first time: a few questions, then it starts what your code needs
+./setup.sh --reconfigure     # ask the questions again
+./setup.sh ~/Source/acme     # scan just these repos (saved as the new choice)
 ./setup.sh --offline         # no LLM, no Jev: no code leaves the machine
 ./setup.sh --dry-run         # report and .env only
 ```
+
+**First run.** `./setup.sh` asks three things and saves the answers in `.env`:
+where your code is (`MCR_ROOT`), which repos to size the stack for
+(`MCR_SCAN`, picked from a numbered list; Enter for all), and which of the
+profiles it found to skip (`MCR_SKIP_PROFILES`; `jvm` and `dotnet` are the
+heaviest). Only the analyzers those repos need start, so a smaller choice uses
+less memory. Later runs reuse the answers without asking; without a terminal
+(CI, Aspire) it never asks.
 
 **Read a review:** every review has a page for people at
 `http://127.0.0.1:7700/reports/R-xxxxxxxx` (verdicts, the Jev fix list, every
@@ -375,7 +384,8 @@ for the assistant in the loop.
 [Get started](#get-started) as it is. With every profile (67 containers) the
 stack uses about 3 GB of memory idle and peaked at about 5 GB reviewing this
 whole repo; images take about 30 GB of disk. `./setup.sh` starts only the
-profiles your code needs, so most laptops run far fewer.
+profiles the repos you picked on the first run need, so most laptops run far
+fewer.
 
 It is built to stay small. Containers of one tool (the four semgrep, five PMD,
 five Roslyn, six ESLint containers) take turns instead of doing the same heavy
@@ -743,6 +753,8 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 | Variable | Default | |
 |---|---|---|
 | `MCR_ROOT` | `$HOME/Source` | What the analyzers can read |
+| `MCR_SCAN` | all of `MCR_ROOT` | Repos `./setup.sh` sizes the stack for (`:`-separated); set on the first run |
+| `MCR_SKIP_PROFILES` | none | Profiles never started, e.g. `dotnet,jvm` |
 | `MCR_PORT` | `7700` | Port published on 127.0.0.1 |
 | `MCR_LEVELS` | all `medium` | Default level per category |
 | `MCR_LLM_BASE_URL`, `MCR_LLM_MODEL` | Grunden, `glm-5.3-flash` | Any OpenAI-compatible API |
