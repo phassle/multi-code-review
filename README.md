@@ -134,6 +134,7 @@ flowchart TB
 | Go | golangci-lint (incl. gosec) |
 | Dockerfiles | hadolint (with ShellCheck on `RUN`) |
 | Cloud IaC: AWS, Azure, GCP | checkov, offline (Terraform, Bicep/ARM, CloudFormation/SAM, Serverless) |
+| Scala, Rust, Swift | semgrep only (plus the all-language rows); `detect_stack` names the analyzer that would come next |
 
 `detect_stack` and `./setup.sh` show, per language and category, which
 analyzer covers it and where only a model does.
@@ -191,6 +192,10 @@ node scripts/mcr.mjs review                          # this repo, diff vs the de
 node scripts/mcr.mjs review ~/Source/acme --base origin/main --out review.md
 node scripts/mcr.mjs fix-report --json               # also: triage, detect, analyzers
 ```
+
+Other flags: `--all` (every file, not the diff), `--category` and
+`--analyzer` (repeatable), `--preexisting` (also findings on unchanged lines),
+`--json`, `--url`; `--help` lists them all.
 
 Exit 0 passed, 1 blocking (`--strict`: also when an analyzer failed), 2 usage
 error or no gateway. `--out` writes the Markdown report; `--github-review` writes
@@ -332,7 +337,7 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
   `gateway/src/catalog.ts`.
 - **`gateway/src/catalog.ts`** is the single list of containers and profiles.
   A test keeps `compose.yaml` in sync with it.
-- **Names:** analyzers reach each other by service name
+- **Names:** the gateway reaches each analyzer by its service name
   (`http://security-semgrep:8080`); the container is named
   `multi-code-review-<service>`, so another checkout of the stack in the same
   Docker does not clash. A test keeps every service prefixed.
@@ -475,7 +480,13 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 | `MCR_LEVELS` | all `medium` | Default level per category |
 | `MCR_LLM_BASE_URL`, `MCR_LLM_MODEL` | Grunden, `glm-5.3-flash` | Any OpenAI-compatible API |
 | `MCR_LLM_DEADLINE_MS`, `MCR_LLM_CONTEXT_TOKENS` | `45000`, `190000` | LLM time and context budget |
+| `MCR_LLM_REASONING`, `MCR_LLM_MAX_TURNS`, `MCR_LLM_TIMEOUT_MS` | `low`, `4`, `180000` | LLM reasoning effort, tool turns, per-call timeout |
 | `MCR_JEV` | `on` | `off` disables the judge |
+| `MCR_JEV_MODEL`, `MCR_JEV_TIMEOUT_MS` | `jev-1.13.0`, `10000` | Pinned Jev model, per-request timeout |
+| `MCR_ANALYZE_TIMEOUT_MS`, `MCR_TOOL_TIMEOUT_MS` | `300000`, `300000` | Gateway wait per analyzer; analyzer kill timer for its tool |
+| `MCR_DOTNET_TIMEOUT_MS` | `600000` | `dotnet build` in the roslyn analyzer |
+| `MCR_REPORT_TTL_DAYS` | `7` | How long review pages are kept |
+| `MCR_ALLOWED_HOSTS`, `MCR_REPORTS_URL` | `127.0.0.1:<port>,localhost:<port>`, `http://<first host>/reports` | Host headers the gateway answers (DNS-rebinding guard); base of report links |
 | `MCR_NUGET_PACKAGES`, `MCR_GOMODCACHE` | `~/.nuget/packages`, `~/go/pkg/mod` | Host caches for .NET and Go |
 
 ### Adding an analyzer
@@ -529,9 +540,9 @@ design notes are in [docs/research/multi-language.md](docs/research/multi-langua
 2. ✅ Decisions, triage, fix report, one container per category.
 3. ✅ Stack detection and one-command setup, analyzers for Java, Kotlin, C#,
    PHP, C/C++, Python, Ruby and Go, LLM reviewers, Jev judge, levels, Aspire.
-4. Bot for GitHub and Azure DevOps: the same images in CI, one summary comment
-   plus inline threads, and `/review accept|refute <reason>` to record
-   decisions.
+4. CI bot: ✅ GitHub (reusable workflow, PR review with P1/P2/P3 line
+   comments); next Azure DevOps, and `/review accept|refute <reason>` in a PR
+   thread to record decisions.
 5. Jev as a first pass over every hunk (checklist questions per category),
    with the LLM only on what it flags (research §11).
 6. More containers: ✅ `security-gitleaks`, ✅ `security-mitre-attack`, ✅ `best-practices-hadolint`,
