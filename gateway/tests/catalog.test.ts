@@ -6,7 +6,7 @@ import { CATALOG } from '../src/catalog.ts';
 // compose.yaml and the catalog must describe the same containers.
 describe('compose.yaml', () => {
   const compose = parse(readFileSync(new URL('../../compose.yaml', import.meta.url), 'utf8'), { maxAliasCount: -1, merge: true }) as {
-    services: Record<string, { profiles?: string[]; environment?: Record<string, string> }>;
+    services: Record<string, { profiles?: string[]; container_name?: string; environment?: Record<string, string> }>;
   };
   const analyzers = Object.entries(compose.services).filter(([name]) => name !== 'review-mcp' && name !== 'report-store');
 
@@ -17,5 +17,9 @@ describe('compose.yaml', () => {
       expect(svc.profiles?.[0] ?? 'core', name).toBe(entry.profile);
       expect(svc.environment?.MCR_CATEGORY, name).toBe(entry.category);
     }
+  });
+
+  it('prefixes every container with multi-code-review-, to tell it apart from other stacks', () => {
+    for (const [name, svc] of Object.entries(compose.services)) expect(svc.container_name, name).toBe(`multi-code-review-${name}`);
   });
 });

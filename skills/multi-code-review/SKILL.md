@@ -88,6 +88,19 @@ security, correctness, reliability, architecture, testing, best-practices.
 Blocking findings come first in each. End with one line: the blocking count,
 or "passed".
 
+## The agent gate (Claude Code)
+
+With this repo installed as a plugin and `agent: { gate: true }` in the repo's
+`.mcr/settings.yml` (or `MCR_GATE=1`), a Stop hook reviews the repo whenever
+you finish a turn. When it blocks, the blocking findings come back to you as
+the reason to keep working: fix them, then finish again. Never silence a
+finding to get past the gate (no edits to `.mcr/decisions.yml`, no disabling
+rules); if one is intended or wrong, ask the user and record their decision.
+After 3 blocked rounds it hands over to the user.
+
+If the user wants the gate, offer the `agent:` block in
+`references/settings.yml`; do not turn it on for them.
+
 ## Set up CI (GitHub Actions)
 
 Use this when the user wants every pull request reviewed automatically. CI runs

@@ -62,7 +62,8 @@ for (const dir of dirs) {
   console.error(detectionMarkdown(d, dir) + '\n');
   const node = d.stacks.find((s) => s.id === 'node');
   if (node) hints.push(...nodeHints(dir, node.projects));
-  files.push(...mine.map((f) => join(dir, f)));
+  // A loop, not push(...): a large MCR_ROOT exceeds the argument limit.
+  for (const f of mine) files.push(join(dir, f));
   for (const t of own) templates.add(join(dir, t));
 }
 if (files.length >= MAX_FILES) hints.push(`Stopped after ${MAX_FILES} files; pass the repos to review to ./setup to narrow it.`);

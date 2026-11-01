@@ -2,5 +2,9 @@
   "name": "multi-code-review",
   "version": "0.1.0",
   "description": "Code review across security, architecture, best-practices, testing, correctness and reliability: containerised analyzers behind an MCP server, plus the skill that drives them.",
-  "author": { "name": "Per Hassle" }
+  "author": {
+    "name": "Per Hassle"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/phassle/multi-code-review"
 }

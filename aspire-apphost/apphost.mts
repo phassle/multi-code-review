@@ -49,8 +49,9 @@ const stack = await builder
         }
     });
 
-/** Follows one container's logs; re-attaches when compose recreates it. */
-function follow(name: string): string[] {
+/** Follows one service's container logs (multi-code-review-<service>); re-attaches when compose recreates it. */
+function follow(service: string): string[] {
+    const name = `multi-code-review-${service}`;
     return ['-c', `while true; do docker inspect ${name} >/dev/null 2>&1 && docker logs -f ${name} 2>&1; sleep 2; done`];
 }
 

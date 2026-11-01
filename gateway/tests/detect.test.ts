@@ -36,10 +36,10 @@ describe('stack detection', () => {
     expect(d.profiles).toEqual(['core', 'node', 'jvm', 'dotnet', 'cpp']);
     const jvm = d.stacks.find((s) => s.id === 'jvm')!;
     expect(jvm.projects).toEqual(['datamanager']);
-    expect(jvm.coverage.security).toEqual(['security-semgrep', 'security-gitleaks', 'security-pmd']);
-    expect(jvm.coverage.testing).toEqual([]);
+    expect(jvm.coverage.security).toEqual(['security-semgrep', 'security-gitleaks', 'security-mitre-attack', 'security-osv', 'security-pmd']);
+    expect(jvm.coverage.testing).toEqual(['testing-coverage']); // diff coverage reads any language's report
     const cpp = d.stacks.find((s) => s.id === 'cpp')!;
-    expect(cpp.coverage.security).toEqual(['security-gitleaks', 'security-cppcheck']); // semgrep's C rules do not read .cpp
+    expect(cpp.coverage.security).toEqual(['security-gitleaks', 'security-mitre-attack', 'security-osv', 'security-cppcheck']); // semgrep's C rules do not read .cpp
     expect(cpp.coverage.architecture).toEqual([]);
     expect(detectionMarkdown(d)).toContain('clang-tidy');
   });
@@ -49,7 +49,7 @@ describe('stack detection', () => {
     expect(kotlin.profiles).toEqual(['core', 'jvm']);
     const kt = kotlin.stacks[0]!;
     expect(kt.coverage.correctness).toEqual(['correctness-semgrep', 'correctness-detekt']);
-    expect(kt.coverage.security).toEqual(['security-semgrep', 'security-gitleaks']);
+    expect(kt.coverage.security).toEqual(['security-semgrep', 'security-gitleaks', 'security-mitre-attack', 'security-osv']);
     expect(kt.coverage.architecture).toEqual([]);
     const java = detect(['pom.xml', ...many('src', '.java', 5)]).stacks[0]!;
     expect(java.coverage.reliability).toEqual(['reliability-semgrep', 'reliability-pmd']);
@@ -59,8 +59,12 @@ describe('stack detection', () => {
 
   it('covers cloud IaC with checkov: Terraform, Bicep and templates by name, not any YAML', () => {
     const tf = detect(many('infra/aws', '.tf', 5)).stacks.find((s) => s.id === 'infra')!;
-    expect(tf.coverage.security).toEqual(['security-gitleaks', 'security-checkov']);
+    expect(tf.coverage.security).toEqual(['security-gitleaks', 'security-mitre-attack', 'security-osv', 'security-checkov']);
     expect(tf.coverage.reliability).toEqual(['reliability-checkov']);
+    // zizmor only where there are workflows
+    const gha = detect(['.github/workflows/ci.yml', 'Dockerfile']).stacks.find((s) => s.id === 'infra')!;
+    expect(gha.coverage.security).toContain('security-zizmor');
+    expect(tf.coverage.security).not.toContain('security-zizmor');
     const sam = detect(['template.yaml', 'samconfig.toml', ...many('src', '.py', 5)]);
     expect(sam.profiles).toContain('infra');
     expect(sam.stacks.find((s) => s.id === 'infra')!.coverage.security).toContain('security-checkov');
@@ -89,7 +93,7 @@ describe('stack detection', () => {
 
   it('lets the llm profile cover every category of every stack', () => {
     const d = detect(many('core', '.cpp', 10), ['core', 'llm']);
-    expect(d.stacks[0]!.coverage.testing).toEqual(['testing-llm']);
+    expect(d.stacks[0]!.coverage.testing).toEqual(['testing-coverage', 'testing-llm']);
   });
 
   it('names the profiles a change needs that are not running', () => {
@@ -111,6 +115,9 @@ describe('catalog', () => {
       'correctness-semgrep=http://correctness-semgrep:8080',
       'reliability-semgrep=http://reliability-semgrep:8080',
       'security-gitleaks=http://security-gitleaks:8080',
+      'security-mitre-attack=http://security-mitre-attack:8080',
+      'security-osv=http://security-osv:8080',
+      'testing-coverage=http://testing-coverage:8080',
     ]);
   });
 });
