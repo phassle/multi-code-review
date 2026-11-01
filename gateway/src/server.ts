@@ -36,9 +36,10 @@ const REGISTRY = parseRegistry(process.env.MCR_ANALYZERS || registryFor(PROFILES
 const LEVELS = defaultLevels(process.env.MCR_LEVELS);
 for (const n of LEVELS.notes) console.warn(n);
 const JUDGE = jevEnabled() ? { ask: askJev, model: JEV_MODEL } : undefined;
-const ALLOWED_HOSTS = (process.env.MCR_ALLOWED_HOSTS ?? `127.0.0.1:${PUBLIC_PORT},localhost:${PUBLIC_PORT}`).split(',');
+// Empty counts as unset: compose passes these through as '' when .env does not set them.
+const ALLOWED_HOSTS = (process.env.MCR_ALLOWED_HOSTS || `127.0.0.1:${PUBLIC_PORT},localhost:${PUBLIC_PORT}`).split(',').map((h) => h.trim()).filter(Boolean);
 // Where people open the HTML reports; the first allowed host unless set.
-const REPORTS_URL = (process.env.MCR_REPORTS_URL ?? `http://${ALLOWED_HOSTS[0]}/reports`).replace(/\/$/, '');
+const REPORTS_URL = (process.env.MCR_REPORTS_URL || `http://${ALLOWED_HOSTS[0]}/reports`).replace(/\/$/, '');
 
 // Recent reviews and their findings, so triage and reports need not re-run the
 // analyzers. In memory: a restart forgets them, the decisions file does not.
@@ -78,12 +79,13 @@ const reviewInput = {
   scope: z.enum(['diff', 'all']).optional().describe('diff (default): what changed since the merge base. all: every file in the repo, for a baseline triage.'),
   categories: z.array(z.enum(CATEGORIES)).optional().describe('Only report these categories.'),
   include_preexisting: z.boolean().optional().describe('Also list findings on unchanged lines of changed files. They never block. Default false.'),
+  intent: z.string().optional().describe("What the change is meant to do, in the author's words: the user's task, the PR description or the ticket. The LLM reviewers check the change against it (missing parts, contrary behavior). Long text is cut to the first 4,000 characters. Default: the branch's commit messages."),
 };
 
-type ReviewArgs = { path: string; base?: string; scope?: 'diff' | 'all'; categories?: Array<(typeof CATEGORIES)[number]>; include_preexisting?: boolean };
+type ReviewArgs = { path: string; base?: string; scope?: 'diff' | 'all'; categories?: Array<(typeof CATEGORIES)[number]>; include_preexisting?: boolean; intent?: string };
 
 function options(a: ReviewArgs, analyzers?: string[]): ReviewOptions {
-  return { path: a.path, base: a.base, scope: a.scope, categories: a.categories, includePreexisting: a.include_preexisting, analyzers, profiles: PROFILES, judge: JUDGE, defaultLevels: process.env.MCR_LEVELS ? LEVELS.levels : undefined, today: today() };
+  return { path: a.path, base: a.base, scope: a.scope, categories: a.categories, includePreexisting: a.include_preexisting, intent: a.intent, analyzers, profiles: PROFILES, judge: JUDGE, defaultLevels: process.env.MCR_LEVELS ? LEVELS.levels : undefined, today: today() };
 }
 
 /** A cached review by id, or a fresh one from the review arguments. */

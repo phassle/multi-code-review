@@ -22,6 +22,16 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout;
 }
 
+/** Commit messages since the merge base, newest first (at most 50); [] when there are none or git fails. */
+export async function commitMessages(repoRoot: string, mergeBase: string): Promise<string[]> {
+  try {
+    const out = await git(repoRoot, ['log', '--max-count=50', '--format=%B%x1e', `${mergeBase}..HEAD`]);
+    return out.split('\x1e').map((m) => m.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 /** The path must exist, be inside MCR_ROOT, and be (inside) a git work tree. */
 export async function resolveRepo(path: string, mcrRoot: string): Promise<string> {
   if (!isAbsolute(path)) throw new Error(`path must be absolute: ${path}`);

@@ -25,7 +25,10 @@ is how the review learns the codebase.
    not running, call `detect_stack` and tell the user to run `./setup.sh`.
    Call `run_review` with the absolute path of the repository or worktree.
    Leave `base` empty unless the user names one. Run `git fetch origin` first
-   if the base may be stale.
+   if the base may be stale. Pass `intent`: what the change is meant to do, in
+   the user's words (their task, or the PR description or ticket). The LLM
+   reviewers check the change against it; without it they get the commit
+   messages.
 2. Read the per-category verdict table, then the findings:
    - ⛔ **blocking**: new, high severity, no accepting decision. Fix it, or triage it.
    - ⚠️ **warn**: new, medium severity.

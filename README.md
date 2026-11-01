@@ -188,11 +188,20 @@ node scripts/status.mjs      # MCP URL, tools, dashboard link
 Or without Aspire:
 
 ```bash
-./setup.sh                   # scan all of MCR_ROOT, start what it needs
-./setup.sh ~/Source/acme     # scan just these repos
+./setup.sh                   # first time: a few questions, then it starts what your code needs
+./setup.sh --reconfigure     # ask the questions again
+./setup.sh ~/Source/acme     # scan just these repos (saved as the new choice)
 ./setup.sh --offline         # no LLM, no Jev: no code leaves the machine
 ./setup.sh --dry-run         # report and .env only
 ```
+
+**First run.** `./setup.sh` asks three things and saves the answers in `.env`:
+where your code is (`MCR_ROOT`), which repos to size the stack for
+(`MCR_SCAN`, picked from a numbered list; Enter for all), and which of the
+profiles it found to skip (`MCR_SKIP_PROFILES`; `jvm` and `dotnet` are the
+heaviest). Only the analyzers those repos need start, so a smaller choice uses
+less memory. Later runs reuse the answers without asking; without a terminal
+(CI, Aspire) it never asks.
 
 **Read a review:** every review has a page for people at
 `http://127.0.0.1:7700/reports/R-xxxxxxxx` (verdicts, the Jev fix list, every
@@ -220,6 +229,9 @@ The pages are served only through the gateway, to allowed hosts.
   `claude mcp add --transport http multi-code-review http://127.0.0.1:7700/mcp`.
 - **Others:** a streamable-HTTP MCP server at `http://127.0.0.1:7700/mcp`. Give
   the agent `skills/multi-code-review/SKILL.md` as instructions.
+
+One stack for the whole team instead of one per laptop: see
+[Running it for a team](#running-it-for-a-team).
 
 ### The agent gate
 
@@ -352,6 +364,126 @@ This repo reviews its own pull requests with `.github/workflows/self-review.yml`
 Without `llm_api_key` and `typesafe_api_key` (or with `offline: true`) no code
 leaves the runner.
 
+## Running it for a team
+
+The gateway reviews the files it can read, at the path the assistant passes.
+So **where the code lives decides the setup**, more than which cloud you pick.
+
+| Setup | Where the code is | Reviews | Good for |
+|---|---|---|---|
+| **Local** (default) | each developer's machine | uncommitted work, in the loop; the [agent gate](#the-agent-gate) works | anyone with Docker; nothing leaves the laptop |
+| **Shared dev box** | on the box: developers work there (SSH, VS Code Remote, JetBrains Gateway) and run their assistant there | the same as local, one stack for everyone | teams that already code on a remote machine |
+| **Shared review server** | clones on the server, kept fresh by `git fetch` | what is pushed, not local edits | a central gate without Docker on every laptop |
+| **CI** | the runner's checkout | every pull request | everyone, already: [Pull requests on GitHub](#pull-requests-on-github) |
+
+They combine: most teams run CI for everyone, plus local or a shared dev box
+for the assistant in the loop.
+
+### Local
+
+[Get started](#get-started) as it is. With every profile (67 containers) the
+stack uses about 3 GB of memory idle and peaked at about 5 GB reviewing this
+whole repo; images take about 30 GB of disk. `./setup.sh` starts only the
+profiles the repos you picked on the first run need, so most laptops run far
+fewer.
+
+It is built to stay small. Containers of one tool (the four semgrep, five PMD,
+five Roslyn, six ESLint containers) take turns instead of doing the same heavy
+work at once, which cut that peak from 8 GB to 5 GB for 8 seconds more on a
+whole-repo review; the LLM reviewers, light but slow, still run side by side.
+Every container has a memory ceiling (`mem_limit` in `compose.yaml`: 512 MB by
+default, up to 4 GB for Roslyn's build). A ceiling reserves nothing: a tool
+that hits it fails that one analysis with an error, and the machine keeps its
+memory.
+
+### Shared dev box or review server
+
+The same `compose.yaml` on one Linux machine with Docker, in the office or as a
+cloud VM:
+
+- **Shared dev box:** set `MCR_ROOT` to where everyone's checkouts are (e.g.
+  `/home`). Assistants on the box connect to `http://127.0.0.1:7700/mcp`
+  exactly as on a laptop. Anyone who reaches the gateway can review any path
+  under `MCR_ROOT`; give teams their own box or `MCR_ROOT` if that matters.
+- **Review server:** clone the repos under `MCR_ROOT` (e.g. `/srv/mcr/repos`)
+  and fetch them on a timer (cron or a systemd timer, `git fetch --all`), and
+  check the branch to review out in a worktree. An assistant connected over MCP
+  passes the server path to `run_review` (`/srv/mcr/repos/acme`). The CLI
+  resolves its path locally, so run it on the server:
+  `ssh mcr-host node multi-code-review/scripts/mcr.mjs review /srv/mcr/repos/acme --base origin/main`. For Go and .NET, run
+  `go mod download` / `dotnet restore` in the clones so the host caches are
+  filled; the analyzers stay offline.
+
+**Opening it up safely.** The gateway has no login of its own: it trusts
+whoever reaches the port, and review pages contain code.
+
+1. Keep the published port on `127.0.0.1` and put a reverse proxy with TLS on
+   the same machine.
+2. Reach it only over a private network: office LAN, VPN, Tailscale, or the
+   cloud's private network. Never a public IP.
+3. Require a token on `/mcp` as well. MCP clients cannot do a browser login,
+   but they can send a header:
+   ```bash
+   claude mcp add --transport http multi-code-review https://mcr.example.internal/mcp \
+     --header "Authorization: Bearer $MCR_TOKEN"
+   ```
+   ```caddyfile
+   mcr.example.internal {
+   	@mcp_ok {
+   		path /mcp*
+   		header Authorization "Bearer {$MCR_TEAM_TOKEN}"
+   	}
+   	@mcp path /mcp*
+   	handle @mcp_ok {
+   		reverse_proxy 127.0.0.1:7700
+   	}
+   	handle @mcp {
+   		respond 401
+   	}
+   	# /reports opens in a browser: the cloud's SSO here, or the private network alone.
+   	handle {
+   		reverse_proxy 127.0.0.1:7700
+   	}
+   }
+   ```
+4. Tell the gateway its name: `MCR_ALLOWED_HOSTS=mcr.example.internal` and
+   `MCR_REPORTS_URL=https://mcr.example.internal/reports` in `.env`.
+5. Keys stay Docker secrets on the machine (`secrets/`), written at boot from
+   the cloud's secret store. Analyzers still have no egress; only the `*-llm`
+   containers reach the LLM API. `./setup.sh --offline` keeps every line of
+   code inside your network.
+
+`record_decisions` keeps working remotely: it returns the file and the
+assistant writes it in its own checkout.
+
+**Size** for concurrent reviews, not developers: one review peaks around
+5 GB with every profile, and the heavy tools are Roslyn (`dotnet build`), the
+JVM tools (PMD, detekt) and semgrep. A team of about ten: 8 vCPU, 32 GB
+memory, 128 GB SSD. With only a couple of profiles, half that is enough.
+
+**Keep it fresh:** rebuild weekly
+(`docker compose build --pull && docker compose up -d`). That also refreshes
+osv's vulnerability database, which is baked into its image.
+
+### Where to host it
+
+Use a VM with Docker, not a managed container service. The stack depends on
+Compose internal networks (no egress for analyzers), read-only containers,
+tmpfs and Docker secrets. A VM keeps that security model the same everywhere;
+Azure Container Instances, Cloud Run and ECS Fargate would each need it rebuilt.
+
+| Where | Machine | Private access | Secrets |
+|---|---|---|---|
+| Office | any Linux box with Docker, 8 cores / 32 GB | office LAN or VPN; Tailscale for remote staff | `secrets/` on the box |
+| Azure | Linux VM, e.g. `Standard_D8s_v5` | VNet with VPN Gateway or Bastion; Application Gateway with Entra ID in front of `/reports` | Key Vault, read by the VM's managed identity at boot |
+| Google Cloud | Compute Engine, e.g. `e2-standard-8` | VPC with Cloud VPN, or IAP TCP forwarding | Secret Manager, read by the VM's service account |
+| AWS | EC2, e.g. `m7i.2xlarge` | VPC with Client VPN, or SSM Session Manager port forwarding | Secrets Manager, read by the instance role |
+
+For a shared dev box, the clouds' remote dev environments fit the same
+pattern: Microsoft Dev Box, Google Cloud Workstations, or a plain VM that
+developers reach over SSH. A self-hosted CI runner on the same machine reuses
+the built images, so pull requests skip the image build.
+
 ## Logs and the dashboard
 
 Under Aspire every container is its own resource with its own logs:
@@ -421,7 +553,8 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
    diffs skip the LLM reviewers unless the level is `maximum`.
 3. **Levels:** `.mcr/settings.yml` decides which analyzers run per category.
 4. **Analyzers in parallel:** each gets `{ root, files, changes }` and returns
-   SARIF. Findings off the changed files are dropped.
+   SARIF. Findings off the changed files are dropped. The LLM reviewers also
+   get the **intent**: what the change is meant to do (see below).
 5. **Classify:** fingerprint and new or pre-existing. Blocking means new,
    severity at the category's blocking level, and no accepting decision.
 6. **Decisions:** `.mcr/decisions.yml` is applied, most specific first.
@@ -438,7 +571,7 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 |---|---|
 | `list_analyzers` | Containers, their category, languages, extensions |
 | `detect_stack` | A repo's stacks, which analyzer covers each category, and profiles that should run but do not |
-| `run_review` | Diff vs base, or `scope: "all"`. Runs every matching container in parallel, applies decisions, returns a verdict per category and the findings |
+| `run_review` | Diff vs base, or `scope: "all"`. Runs every matching container in parallel, applies decisions, returns a verdict per category and the findings. Optional `intent`: what the change should do |
 | `run_analyzer` | The same with named containers only |
 | `get_finding` | Full detail for one `F-xxxxxxxx` from a recent review |
 | `triage_queue` | Undecided findings grouped by rule: the agenda for deciding with the user |
@@ -598,6 +731,20 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
     through a fixed `report_findings` schema.
   - Findings off changed lines, or with confidence below 0.5, are dropped.
   - High severity needs confidence ≥ 0.8.
+  - Without a key in `secrets/llm_api_key` the `llm` profile does not start
+    (`./setup.sh`); if it runs anyway, each reviewer skips with a note.
+- **Intent:** up to 4,000 characters of what the change is meant to do. It
+  comes from `run_review`'s `intent` (the user's task, which the
+  [skill](skills/multi-code-review/SKILL.md) asks the assistant to pass), from
+  `mcr review --intent` / `--intent-file`, or in a pull request from its title
+  and description (the workflow passes them). Without one, the branch's
+  commit messages are used (trailers, merges and fixups dropped). Every LLM
+  reviewer gets it as context, tagged as data and never as instructions; the
+  correctness reviewer also checks the change against it: a promised part
+  that is missing (`llm:intent-missing-part`) or behavior that contradicts it
+  (`llm:intent-contradicted`). They are at most medium and never block,
+  at any level: the intent is the author's own text, and a pull request
+  description can come from anyone.
 - **Jev:** every request stays under 32k tokens. Long lines and distant code
   are trimmed first. The model is pinned (`jev-1.13.0`) so verdicts can be
   replayed.
@@ -607,6 +754,8 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
 | Variable | Default | |
 |---|---|---|
 | `MCR_ROOT` | `$HOME/Source` | What the analyzers can read |
+| `MCR_SCAN` | all of `MCR_ROOT` | Repos `./setup.sh` sizes the stack for (`:`-separated); set on the first run |
+| `MCR_SKIP_PROFILES` | none | Profiles never started, e.g. `dotnet,jvm` |
 | `MCR_PORT` | `7700` | Port published on 127.0.0.1 |
 | `MCR_LEVELS` | all `medium` | Default level per category |
 | `MCR_LLM_BASE_URL`, `MCR_LLM_MODEL` | Grunden, `glm-5.3-flash` | Any OpenAI-compatible API |

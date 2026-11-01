@@ -8,6 +8,12 @@ describe('mcr cli', () => {
   });
 
   it('rejects unknown commands, options and missing values', () => {
+    expect(parseArgs(['detect', '--intent', 'x']).error).toMatch(/only works with review/);
+    expect(parseArgs(['review', '--intent', 'x', '--intent-file', 'f']).error).toMatch(/not both/);
+    const withIntent = parseArgs(['review', '/repo', '--intent', 'Add VAT to totals']);
+    expect(toolCall(withIntent, '/repo').arguments.intent).toBe('Add VAT to totals');
+    expect(toolCall(parseArgs(['review', '/repo', '--intent', '  ']), '/repo').arguments.intent).toBeUndefined();
+    expect(toolCall(parseArgs(['review', '/repo', '--intent', 'x', '--analyzer', 'correctness-llm']), '/repo').arguments.intent).toBe('x');
     expect(parseArgs([]).error).toBe('no command');
     expect(parseArgs(['lint']).error).toMatch(/unknown command/);
     expect(parseArgs(['review', '--nope']).error).toMatch(/unknown option/);

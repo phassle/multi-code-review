@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseUnifiedDiff, touchesChange } from '../src/diff.ts';
-import { classify, dedupe, fingerprint, fromSarif, uniqueIds, type RawFinding } from '../src/findings.ts';
+import { classify, dedupe, fingerprint, fromSarif, neverBlocks, uniqueIds, type RawFinding } from '../src/findings.ts';
 import { filesFor, parseRegistry } from '../src/analyzers.ts';
 
 const DIFF = `diff --git a/src/a.ts b/src/a.ts
@@ -134,5 +134,13 @@ describe('analyzer registry', () => {
   it('routes files by a basename prefix ending in "."', () => {
     const info = { name: 'hadolint', version: '1', languages: [], categories: [], extensions: ['Dockerfile', 'Dockerfile.', '.dockerfile'] };
     expect(filesFor(info, ['Dockerfile', 'api/Dockerfile.prod', 'web/app.dockerfile', 'Dockerfiles/readme.md', 'a.ts'])).toEqual(['Dockerfile', 'api/Dockerfile.prod', 'web/app.dockerfile']);
+  });
+});
+
+describe('neverBlocks', () => {
+  it('holds for the LLM intent checks only', () => {
+    expect(neverBlocks({ analyzer: 'correctness-llm', ruleId: 'intent-missing-part' })).toBe(true);
+    expect(neverBlocks({ analyzer: 'correctness-llm', ruleId: 'off-by-one' })).toBe(false);
+    expect(neverBlocks({ analyzer: 'correctness-semgrep', ruleId: 'intent-x' })).toBe(false);
   });
 });

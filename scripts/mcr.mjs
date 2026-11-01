@@ -32,6 +32,8 @@ Options (review, fix-report, triage):
   --category <name>   Only this category; repeatable
   --analyzer <name>   Only these analyzers (review only); repeatable
   --preexisting       Also list findings on unchanged lines (never block)
+  --intent <text>     What the change is meant to do (review only); the LLM reviewers check it. Default: the commit messages
+  --intent-file <f>   The same, from a file (e.g. the PR title and description)
 Output:
   --json              Print the JSON result instead of Markdown
   --out <file>        Also write the Markdown report to a file (for a PR comment)
@@ -45,7 +47,7 @@ Output:
 `;
 
 const COMMANDS = { review: 'run_review', 'fix-report': 'fix_report', triage: 'triage_queue', detect: 'detect_stack', analyzers: 'list_analyzers' };
-const VALUE_FLAGS = new Set(['--base', '--category', '--analyzer', '--out', '--url', '--github-review', '--commit', '--pr-files', '--skip', '--report-url']);
+const VALUE_FLAGS = new Set(['--base', '--intent', '--intent-file', '--category', '--analyzer', '--out', '--url', '--github-review', '--commit', '--pr-files', '--skip', '--report-url']);
 const BOOL_FLAGS = new Set(['--all', '--preexisting', '--json', '--strict', '--help', '-h']);
 
 /** argv (without node and script) -> { command, path, flags } or { error }. */
@@ -71,6 +73,8 @@ export function parseArgs(argv) {
   if (rest.length) return { error: `unexpected ${rest.join(' ')}` };
   if (flags.analyzer.length && command !== 'review') return { error: '--analyzer only works with review' };
   if (flags['github-review'] && command !== 'review') return { error: '--github-review only works with review' };
+  if ((flags.intent || flags['intent-file']) && command !== 'review') return { error: '--intent only works with review' };
+  if (flags.intent && flags['intent-file']) return { error: 'pass --intent or --intent-file, not both' };
   return { command, path, flags };
 }
 
@@ -83,6 +87,7 @@ export function toolCall({ command, flags }, absPath) {
   if (flags.all) args.scope = 'all';
   if (flags.category.length) args.categories = flags.category;
   if (flags.preexisting) args.include_preexisting = true;
+  if (command === 'review' && flags.intent?.trim()) args.intent = flags.intent;
   if (command === 'review' && flags.analyzer.length) return { name: 'run_analyzer', arguments: { ...args, analyzers: flags.analyzer } };
   return { name: COMMANDS[command], arguments: args };
 }
@@ -161,6 +166,14 @@ async function main() {
   } catch {
     process.stderr.write(`mcr: no such path ${parsed.path}\n`);
     return 2;
+  }
+  if (flags['intent-file']) {
+    try {
+      flags.intent = readFileSync(flags['intent-file'], 'utf8');
+    } catch {
+      process.stderr.write(`mcr: cannot read ${flags['intent-file']}\n`);
+      return 2;
+    }
   }
   const base = gatewayUrl(flags.url);
   try {

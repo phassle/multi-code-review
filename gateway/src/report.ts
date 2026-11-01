@@ -263,6 +263,7 @@ export function compactReview(r: Review) {
   return {
     id: r.id, scope: r.scope, repoRoot: r.repoRoot, base: r.base, mergeBase: r.mergeBase, head: r.head,
     changedFiles: r.changedFiles, blocking: r.blocking, preexisting: r.preexisting, suppressed: r.suppressed, judged: r.judged, tier: r.tier,
+    ...(r.intent ? { intent: r.intent.source } : {}),
     analyzers: r.analyzers.filter((a) => !a.skipped).map((a) => ({ name: a.name, findings: a.findings, ms: a.durationMs, ...(a.error ? { error: a.error } : {}) })),
     findings: r.findings.map((f) => ({
       id: f.id, rule: ruleKey(f), category: f.category, severity: f.severity, file: f.file, line: f.line,
