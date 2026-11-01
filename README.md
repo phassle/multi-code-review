@@ -293,6 +293,14 @@ aspire logs correctness-llm       # one analyzer
 aspire logs stack                 # docker compose: builds, starts, errors
 ```
 
+Without Aspire, use the service name with compose, or the container name
+(always `multi-code-review-<service>`) with docker:
+
+```bash
+docker compose logs security-mitre-attack
+docker logs multi-code-review-review-mcp
+```
+
 `review-mcp` shows the MCP endpoint, health and links in the dashboard. The
 `stack` resource has a **Rescan codebase** command for when a new language
 shows up.
@@ -311,7 +319,8 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
           ▼ network "analyzers"                     ▼ network "llm"
             internal, no egress                       internal
    security-semgrep  correctness-roslyn …      security-llm … ──▶ llm-egress ──▶ LLM API
-   one container per category: <category>-<tool>
+   one container per category: service <category>-<tool>,
+   container multi-code-review-<category>-<tool>
 ```
 
 - **Docker Compose** runs everything (`compose.yaml`). Services without a
@@ -323,6 +332,10 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
   `gateway/src/catalog.ts`.
 - **`gateway/src/catalog.ts`** is the single list of containers and profiles.
   A test keeps `compose.yaml` in sync with it.
+- **Names:** analyzers reach each other by service name
+  (`http://security-semgrep:8080`); the container is named
+  `multi-code-review-<service>`, so another checkout of the stack in the same
+  Docker does not clash. A test keeps every service prefixed.
 - **Containers** are `read_only`, with `cap_drop: ALL` and `no-new-privileges`.
   `MCR_ROOT` is mounted read-only at the same path as on the host. Only the
   `*-llm` containers have a route out, and only to the LLM API.
@@ -411,6 +424,34 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
   `PasswordEncoder`, CORS `*`, secrets and stack traces in config, proxy
   annotations on private methods, field injection).
 
+#### MITRE ATT&CK rules
+
+`security-mitre-attack`, one row per rule. Severity is for non-test files; tests get one step lower.
+
+| Technique | What | Rule id | Severity |
+|---|---|---|---|
+| [T1059.004](https://attack.mitre.org/techniques/T1059/004/) | Reverse shell | `T1059.004-reverse-shell` | high |
+| [T1059](https://attack.mitre.org/techniques/T1059/) | Download and execute | `T1059-download-execute` | medium |
+| [T1059.001](https://attack.mitre.org/techniques/T1059/001/) | Encoded PowerShell | `T1059.001-encoded-powershell` | high |
+| [T1195.002](https://attack.mitre.org/techniques/T1195/002/) | Package install hook reaching out | `T1195.002-install-hook` | high (package.json) |
+| [T1027](https://attack.mitre.org/techniques/T1027/) | Executes decoded payload | `T1027-decode-eval` | high |
+| [T1505.003](https://attack.mitre.org/techniques/T1505/003/) | Web shell | `T1505.003-web-shell` | high |
+| [T1070](https://attack.mitre.org/techniques/T1070/) | Indicator removal | `T1070-clear-traces` | high |
+| [T1562.001](https://attack.mitre.org/techniques/T1562/001/) | Impair defenses | `T1562.001-disable-defenses` | high |
+| [T1098.004](https://attack.mitre.org/techniques/T1098/004/) | SSH authorized keys | `T1098.004-ssh-authorized-keys` | high |
+| [T1136.001](https://attack.mitre.org/techniques/T1136/001/) | Create root-equivalent account | `T1136-root-account` | high |
+| [T1496](https://attack.mitre.org/techniques/T1496/) | Resource hijacking | `T1496-cryptominer` | high |
+| [T1567](https://attack.mitre.org/techniques/T1567/) | Exfiltration endpoint | `T1567-exfil-service` | high |
+| [T1567](https://attack.mitre.org/techniques/T1567/) | Paste site or chat webhook | `T1567-paste-or-chat-webhook` | medium |
+| [T1552.001](https://attack.mitre.org/techniques/T1552/001/) | Reads credential stores | `T1552.001-credential-files` | medium |
+| [T1552](https://attack.mitre.org/techniques/T1552/) | Dumps the whole environment | `T1552-env-dump` | medium |
+| [T1053.003](https://attack.mitre.org/techniques/T1053/003/) | Cron persistence | `T1053.003-cron` | medium |
+| [T1543.002](https://attack.mitre.org/techniques/T1543/002/) | Systemd service persistence | `T1543.002-systemd-service` | medium |
+| [T1546.004](https://attack.mitre.org/techniques/T1546/004/) | Shell profile modification | `T1546.004-shell-profile` | medium |
+| [T1547.001](https://attack.mitre.org/techniques/T1547/001/) | Registry run key | `T1547.001-run-key` | medium |
+| [T1548.001](https://attack.mitre.org/techniques/T1548/001/) | Setuid bit | `T1548.001-setuid` | medium |
+| [T1105](https://attack.mitre.org/techniques/T1105/) | Ingress tool transfer | `T1105-fetch-chmod-run` | medium |
+
 ### Model budgets
 
 - **LLM reviewer:**
@@ -446,14 +487,16 @@ harness ──MCP/HTTP──▶ review-mcp gateway (127.0.0.1:7700)
    calls `serve()` from `analyzers/_kit/serve.mjs`. The kit handles HTTP, path
    checks, the one-category filter and SARIF.
 2. Add one `<category>-<tool>` service per category to `compose.yaml` under a
-   profile, and the same entries to `gateway/src/catalog.ts`.
+   profile (`container_name: multi-code-review-<category>-<tool>`), and the
+   same entries to `gateway/src/catalog.ts`.
 3. Map the stack in `gateway/src/detect.ts` (extensions, manifests, profile).
 4. Test the pure parts next to the adapter (`adapter.test.mjs`).
 
 `analyzers/gitleaks` (core, any file) and `analyzers/hadolint` (its own
 `infra` profile) are the smallest complete examples: copy the tool's binary
 from its official image, turn its JSON into findings, done. Each answers in
-milliseconds.
+milliseconds. `analyzers/mitre-attack` shows a rule-based analyzer with no
+tool binary at all: line patterns in the adapter, tested sample by sample.
 
 **Next analyzers.** Each fits the same contract; most read source only, so
 they stay offline and fast:
