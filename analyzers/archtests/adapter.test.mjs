@@ -6,6 +6,7 @@ import {
   analyze,
   attrs,
   candidateTypes,
+  typeDeclaration,
   csharpTypes,
   findResults,
   infoFor,
@@ -185,6 +186,17 @@ describe('NetArchTest parsing', () => {
       { namespace: 'MyApp.Domain', name: 'Customer', line: 5 },
       { namespace: 'MyApp', name: 'Customer', line: 8 },
     ]);
+  });
+
+  it('reads declarations behind attributes and modifiers, and stays linear on hostile lines', () => {
+    expect(typeDeclaration('  [Serializable] [Obsolete("x")] public sealed partial class Order : Entity')?.[1]).toBe('Order');
+    expect(typeDeclaration('internal readonly record struct Money(decimal Amount);')?.[1]).toBe('Money');
+    expect(typeDeclaration('public void Run() { }')).toBeNull();
+    expect(typeDeclaration('[unclosed public class X')).toBeNull();
+    const hostile = '['.repeat(1) + ']'.repeat(1) + ' public'.repeat(20000) + ' !';
+    const t = Date.now();
+    expect(typeDeclaration(hostile)).toBeNull();
+    expect(Date.now() - t).toBeLessThan(500);
   });
 
   it('locates a type by namespace and name, also from member names', () => {

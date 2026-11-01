@@ -231,6 +231,21 @@ export function candidateTypes(message) {
   return [...out];
 }
 
+const MODIFIER = /^(?:public|internal|private|protected|sealed|abstract|static|partial|readonly|unsafe|file|new|ref)\s+/;
+const DECLARATION = /^(?:record\s+(?:class|struct)|class|record|struct|interface|enum)\s+([A-Za-z_]\w*)/;
+
+/** The type a C# line declares, as [match, name], or null. Peels attributes and modifiers one at a time (no nested quantifiers, no ReDoS). */
+export function typeDeclaration(line) {
+  let rest = line.trimStart();
+  while (rest.startsWith('[')) {
+    const end = rest.indexOf(']');
+    if (end < 0) return null;
+    rest = rest.slice(end + 1).trimStart();
+  }
+  for (let m = rest.match(MODIFIER); m; m = rest.match(MODIFIER)) rest = rest.slice(m[0].length);
+  return rest.match(DECLARATION);
+}
+
 /**
  * Type declarations of a C# file: [{ namespace, name, line }]. Handles
  * file-scoped and block namespaces (nested too) by brace depth; strings and
@@ -265,9 +280,7 @@ export function csharpTypes(text) {
       if (ns[2] === ';') fileNs = ns[1];
       else stack.push({ name: ns[1], depth });
     }
-    const decl = line.match(
-      /^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|internal|private|protected|sealed|abstract|static|partial|readonly|unsafe|file|new|ref)\s+)*(?:record\s+(?:class|struct)|class|record|struct|interface|enum)\s+([A-Za-z_]\w*)/,
-    );
+    const decl = typeDeclaration(line);
     if (decl) {
       const namespace = [fileNs, ...stack.map((s) => s.name)].filter(Boolean).join('.');
       out.push({ namespace, name: decl[1], line: i + 1 });

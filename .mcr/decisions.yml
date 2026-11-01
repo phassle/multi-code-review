@@ -194,3 +194,13 @@ decisions:
     reason: Package names and versions are regex-escaped before they enter the pattern, and the patterns have no nested quantifiers, so there is no ReDoS.
     decided_by: Per Hassle
     decided_on: 2026-11-01
+  - id: D-0022
+    action: false-positive
+    match:
+      rule: semgrep:javascript.lang.security.html-in-template-string
+      paths:
+        - analyzers/**/*.test.mjs
+    reason: Adapter tests build JUnit XML, TRX and coverage report fixtures with template strings; they are written to temp files and parsed, never rendered in a browser.
+    ref: https://github.com/phassle/multi-code-review/pull/4
+    decided_by: Per Hassle
+    decided_on: 2026-11-01
