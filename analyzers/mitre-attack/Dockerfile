@@ -1,7 +1,6 @@
 # Build context: analyzers/
-# No tool binary: the rules are plain JavaScript in adapter.mjs.
-FROM alpine:3.22
-RUN apk add --no-cache nodejs
+# No tool binary: the rules are plain JavaScript in adapter.mjs, so Node is all it needs.
+FROM node:24-alpine
 WORKDIR /opt/mcr
 COPY _kit/serve.mjs ./_kit/
 COPY mitre-attack/adapter.mjs ./mitre-attack/
