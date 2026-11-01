@@ -97,6 +97,33 @@ x-archtests: &archtests
   build: { context: analyzers, dockerfile: archtests/Dockerfile }
   image: multi-code-review/archtests:dev
 
+x-knip: &knip
+  <<: *analyzer
+  profiles: [node]
+  build: { context: analyzers, dockerfile: knip/Dockerfile }
+  image: multi-code-review/knip:dev
+
+x-import-linter: &import-linter
+  <<: *analyzer
+  profiles: [python]
+  build: { context: analyzers, dockerfile: import-linter/Dockerfile }
+  image: multi-code-review/import-linter:dev
+
+x-deptrac: &deptrac
+  <<: *analyzer
+  profiles: [php]
+  build: { context: analyzers, dockerfile: deptrac/Dockerfile }
+  image: multi-code-review/deptrac:dev
+
+x-go-arch-lint: &go-arch-lint
+  <<: *analyzer
+  profiles: [go]
+  build: { context: analyzers, dockerfile: go-arch-lint/Dockerfile }
+  image: multi-code-review/go-arch-lint:dev
+  volumes:
+    - ${MCR_ROOT:-${HOME}/Source}:${MCR_ROOT:-${HOME}/Source}:ro
+    - ${MCR_GOMODCACHE:-${HOME}/go/pkg/mod}:${MCR_GOMODCACHE:-${HOME}/go/pkg/mod}:ro
+
 x-node: &node
   <<: *analyzer
   profiles: [node]
@@ -370,7 +397,7 @@ services:
     container_name: multi-code-review-reliability-detekt
     environment: { <<: *env, MCR_CATEGORY: reliability }
 
-  # architecture boundaries: import rules (node), packs (ruby), the repo's own ArchUnit / NetArchTest results
+  # architecture boundaries: import rules (node, python, go, php), packs (ruby), the repo's own ArchUnit / NetArchTest results
   architecture-depcruise:
     <<: *depcruise
     container_name: multi-code-review-architecture-depcruise
@@ -389,6 +416,25 @@ services:
     profiles: [dotnet]
     container_name: multi-code-review-architecture-netarchtest
     environment: { <<: *env, MCR_CATEGORY: architecture, MCR_TOOLS: netarchtest }
+
+  architecture-import-linter:
+    <<: *import-linter
+    container_name: multi-code-review-architecture-import-linter
+    environment: { <<: *env, MCR_CATEGORY: architecture }
+  architecture-go-arch-lint:
+    <<: *go-arch-lint
+    container_name: multi-code-review-architecture-go-arch-lint
+    environment: { <<: *env, MCR_CATEGORY: architecture, MCR_GOMODCACHE: '${MCR_GOMODCACHE:-${HOME}/go/pkg/mod}' }
+  architecture-deptrac:
+    <<: *deptrac
+    container_name: multi-code-review-architecture-deptrac
+    environment: { <<: *env, MCR_CATEGORY: architecture }
+
+  # node: unused files, exports and dependencies
+  best-practices-knip:
+    <<: *knip
+    container_name: multi-code-review-best-practices-knip
+    environment: { <<: *env, MCR_CATEGORY: best-practices }
 
   # infra: GitHub Actions workflow syntax, expressions and run: scripts (zizmor has the security audits)
   correctness-actionlint:

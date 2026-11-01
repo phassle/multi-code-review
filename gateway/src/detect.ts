@@ -39,13 +39,13 @@ export function isCloudTemplate(text: string): boolean {
 }
 
 export const STACKS: StackDef[] = [
-  { id: 'node', label: 'JavaScript / TypeScript', extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'], manifests: ['package.json', 'tsconfig.json'], profile: 'node', semgrep: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'], next: 'knip (unused files, exports and dependencies)' },
+  { id: 'node', label: 'JavaScript / TypeScript', extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'], manifests: ['package.json', 'tsconfig.json'], profile: 'node', semgrep: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'], next: 'Stryker (mutation testing, needs a test run)' },
   { id: 'jvm', label: 'Java / Kotlin / Scala', extensions: ['.java', '.kt', '.kts', '.scala'], manifests: ['pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', 'build.sbt'], profile: 'jvm', semgrep: ['.java', '.kt', '.kts', '.scala'], next: 'SpotBugs + Find Security Bugs (needs a build)' },
   { id: 'dotnet', label: 'C# / .NET', extensions: ['.cs', '.fs', '.vb'], manifests: ['.csproj', '.vbproj', '.fsproj', '.sln', '.slnx', 'Directory.Build.props'], profile: 'dotnet', semgrep: ['.cs'], next: 'Security Code Scan (taint analysis)' },
-  { id: 'python', label: 'Python', extensions: ['.py'], manifests: ['pyproject.toml', 'requirements.txt', 'setup.py', 'Pipfile'], profile: 'python', semgrep: ['.py'], next: 'import-linter (architecture)' },
-  { id: 'go', label: 'Go', extensions: ['.go'], manifests: ['go.mod'], profile: 'go', semgrep: ['.go'], next: 'go-arch-lint (architecture)' },
+  { id: 'python', label: 'Python', extensions: ['.py'], manifests: ['pyproject.toml', 'requirements.txt', 'setup.py', 'Pipfile'], profile: 'python', semgrep: ['.py'], next: 'mypy or pyright (types)' },
+  { id: 'go', label: 'Go', extensions: ['.go'], manifests: ['go.mod'], profile: 'go', semgrep: ['.go'], next: 'govulncheck (reachable vulnerabilities)' },
   { id: 'ruby', label: 'Ruby', extensions: ['.rb', '.rake', '.erb'], manifests: ['Gemfile', '.gemspec'], profile: 'ruby', semgrep: ['.rb'], next: 'reek (code smells)' },
-  { id: 'php', label: 'PHP', extensions: ['.php'], manifests: ['composer.json'], profile: 'php', semgrep: ['.php'], next: 'deptrac (architecture), Psalm taint analysis (security)' },
+  { id: 'php', label: 'PHP', extensions: ['.php'], manifests: ['composer.json'], profile: 'php', semgrep: ['.php'], next: 'Psalm taint analysis (security)' },
   { id: 'rust', label: 'Rust', extensions: ['.rs'], manifests: ['Cargo.toml'], semgrep: ['.rs'], next: 'clippy (needs a build)' },
   { id: 'cpp', label: 'C / C++', extensions: ['.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh'], manifests: ['CMakeLists.txt', '.vcxproj', 'Makefile'], profile: 'cpp', semgrep: ['.c'], next: 'clang-tidy (needs compile_commands.json)' },
   { id: 'swift', label: 'Swift', extensions: ['.swift'], manifests: ['Package.swift', '.xcodeproj'], semgrep: ['.swift'], next: 'SwiftLint' },
